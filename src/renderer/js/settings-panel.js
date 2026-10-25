@@ -1,6 +1,6 @@
 // The reading settings drawer (Aa). Every control writes straight to the
 // settings store, and the open book restyles live.
-import { $, setChildren, el, icon, iconButton, toast, promptDialog, confirmDialog, debounce } from './ui.js';
+import { $, setChildren, el, icon, iconButton, toast, promptDialog, confirmDialog, debounce, syncRange } from './ui.js';
 import { getSettings, setSettings, setBookScope, bookScopeActive, resetSettings, DEFAULTS } from './settings.js';
 import { allThemes, isDark, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.js';
 import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
@@ -58,7 +58,7 @@ function range(key, label, min, max, step, fmt = (v) => v, hint) {
     type: 'range', min, max, step, value: s[key],
     oninput: (e) => { const v = +e.target.value; out.textContent = fmt(v); setSettings({ [key]: v }); },
   });
-  const nudge = (d) => { const v = Math.round((Math.min(max, Math.max(min, +input.value + d * step))) * 1000) / 1000; input.value = v; out.textContent = fmt(v); setSettings({ [key]: v }); };
+  const nudge = (d) => { const v = Math.round((Math.min(max, Math.max(min, +input.value + d * step))) * 1000) / 1000; input.value = v; syncRange(input); out.textContent = fmt(v); setSettings({ [key]: v }); };
   return el('div.ctl',
     el('div.ctl-top', el('label', label), el('div.ctl-val',
       el('button.step', { title: 'Less', onclick: () => nudge(-1) }, '−'), out,
@@ -169,12 +169,12 @@ function spacingTab() {
       seg('textAlign', 'Alignment', [['publisher', 'Book'], ['left', 'Left'], ['justify', 'Justify'], ['center', 'Center']]),
       toggleCtl('hyphenation', 'Hyphenation', 'Splits long words at line ends — smoother justified text.')),
     section('Margins & width',
-      range('marginH', 'Side margins', 0, 240, 4, px),
+      range('marginH', 'Side margins', 0, 240, 4, px, 'Shrinks automatically on narrow windows.'),
       range('marginV', 'Top & bottom margins', 0, 160, 4, px),
-      range('maxLineWidth', 'Maximum line length', 0, 1400, 10, (v) => (v ? `${v}px` : 'No limit'), 'Long lines are tiring; 550–750px is comfortable for most fonts.'),
+      range('lineLength', 'Line length', 40, 130, 1, (v) => (v >= 130 ? 'No limit' : `${v} characters`), 'About 60–75 characters is easiest to read. Scales with the font size.'),
       range('columnGap', 'Gap between pages', 0, 160, 4, px)),
     section('Reset', el('button.btn.small', {
-      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'textAlign', 'hyphenation', 'marginH', 'marginV', 'maxLineWidth', 'columnGap']); render(); },
+      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'textAlign', 'hyphenation', 'marginH', 'marginV', 'lineLength', 'columnGap']); render(); },
     }, 'Reset spacing to defaults')),
   ];
 }
@@ -237,7 +237,7 @@ function pageTab() {
     section('Layout',
       seg('flow', 'Reading mode', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
       s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
-      s.flow === 'paginated' && s.spread === 'auto' ? range('spreadThreshold', 'Show two pages when the window is wider than', 600, 2400, 20, px) : null),
+      s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null),
     section('Page turn animation',
       el('div.anim-grid', ANIMATIONS.map((a) => el('button.anim-card', {
         class: `anim-card ${s.pageAnimation === a.id ? 'on' : ''}`,
@@ -347,8 +347,9 @@ function moreTab() {
         vs.map((v) => el('option', { value: v.name, selected: s.ttsVoice === v.name }, `${v.name} (${v.lang})`)))),
       range('ttsRate', 'Speed', 0.5, 3, 0.05, (v) => `${(+v).toFixed(2)}×`),
       range('ttsPitch', 'Pitch', 0.5, 1.5, 0.05, (v) => (+v).toFixed(2))),
+    graphicsSection(),
     section('Pace',
-      range('defaultWpm', 'Starting reading speed', 100, 600, 10, (v) => `${v} wpm`, 'Used for time-left estimates until Marginalia has measured your own pace.')),
+      range('defaultWpm', 'Starting reading speed', 100, 600, 10, (v) => `${v} wpm`, 'Used for time-left estimates until Margins has measured your own pace.')),
     section('Reset',
       el('button.btn.small.danger', {
         onclick: async () => {
@@ -358,6 +359,25 @@ function moreTab() {
         },
       }, 'Reset everything to defaults')),
   ];
+}
+
+// Graphics options only take effect after a restart (Chromium reads them at
+// launch), so the panel shows what is saved and offers to restart.
+let gfx = null;
+let gfxStartup = null;
+window.api.graphics.get().then((g) => { gfx = g; gfxStartup = { ...g }; });
+
+function graphicsSection() {
+  if (!gfx) return null;
+  const changed = gfx.hardwareAcceleration !== gfxStartup.hardwareAcceleration || gfx.srgb !== gfxStartup.srgb;
+  const sw = (key, label, hint) => el('label.ctl.toggle',
+    el('span', el('span.t-label', label), el('span.hint', hint)),
+    el('input', { type: 'checkbox', checked: !!gfx[key], onchange: async (e) => { gfx = await window.api.graphics.set({ [key]: e.target.checked }); render(); } }),
+    el('span.switch'));
+  return section('Display',
+    sw('hardwareAcceleration', 'Hardware acceleration', 'Turn off if pages flicker or tear — some GPU drivers and HDR setups disagree with it.'),
+    sw('srgb', 'Standard colours (sRGB)', 'Keeps colours steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
+    changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null);
 }
 
 document.addEventListener('voices-changed', () => { if (tab === 'more') render(); });

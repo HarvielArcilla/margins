@@ -165,8 +165,9 @@ export function render() {
 
   setChildren(root, 
     el('div.lib-wrap',
+      el('header.lib-head', el('div', el('h1', 'Library'), el('p.muted', summary())), toolbar),
       continueBook && !query && shelf === 'all' && !tag ? continueCard(continueBook) : null,
-      toolbar, shelves, booksEl));
+      shelves, booksEl));
   paintBooks();
 
   function paintBooks() {
@@ -178,6 +179,14 @@ export function render() {
     if (!items.length) { setChildren(booksEl, el('p.empty', 'No books match.')); return; }
     setChildren(booksEl, ...items.map((b) => (getSettings().libraryView === 'grid' ? gridCard(b) : listRow(b))));
   }
+}
+
+function summary() {
+  const all = Object.values(books);
+  if (!all.length) return 'Add ePub books to start reading';
+  const reading = all.filter((b) => !b.finishedAt && b.progress > 0).length;
+  const done = all.filter((b) => b.finishedAt).length;
+  return [`${all.length} book${all.length === 1 ? '' : 's'}`, reading ? `${reading} in progress` : null, done ? `${done} finished` : null].filter(Boolean).join(' · ');
 }
 
 function countFor(id) {
@@ -204,8 +213,13 @@ function continueCard(b) {
       el('div.cont-title', b.title),
       el('div.muted', [b.author, b.chapter].filter(Boolean).join(' · ')),
       el('div.progress-line', el('span', { style: { width: `${Math.round((b.progress || 0) * 100)}%` } })),
-      el('div.muted.small', `${Math.round((b.progress || 0) * 100)}% · ${formatDuration(timeForBook(b.id), { short: true })} read`)),
+      el('div.muted.small', [`${Math.round((b.progress || 0) * 100)}%`, timeForBook(b.id) ? `${formatDuration(timeForBook(b.id), { short: true })} read` : null, b.lastReadAt ? `last read ${relDay(b.lastReadAt)}` : null].filter(Boolean).join(' · '))),
     el('button.btn.primary', icon('play', 14), 'Resume'));
+}
+
+function relDay(t) {
+  const days = Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(t).setHours(0, 0, 0, 0)) / 86400000);
+  return days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 7 ? `${days} days ago` : new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function cover(b, cls = 'cover') {
@@ -262,7 +276,7 @@ function bookMenu(anchor, b) {
     { label: 'Show file', icon: 'folder', onclick: () => window.api.library.reveal(b.id) },
     '-',
     { label: 'Remove from library', icon: 'trash', danger: true, onclick: async () => {
-      if (!(await confirmDialog(`Remove “${b.title}”?`, 'The book, its highlights and its reading position will be deleted from Marginalia. The original file you imported is not touched.', 'Remove', true))) return;
+      if (!(await confirmDialog(`Remove “${b.title}”?`, 'The book, its highlights and its reading position will be deleted from Margins. The original file you imported is not touched.', 'Remove', true))) return;
       await window.api.library.remove(b.id);
       delete books[b.id];
       render();

@@ -30,8 +30,16 @@ export function el(spec, attrs = {}, ...children) {
     else node.setAttribute(k, v === true ? '' : v);
   }
   append(node, children);
+  if (node.tagName === 'INPUT' && node.type === 'range') syncRange(node);
   return node;
 }
+
+// Range inputs show their filled portion through a CSS variable.
+export function syncRange(input) {
+  const min = +input.min || 0, max = +input.max || 100;
+  input.style.setProperty('--fill', `${((+input.value - min) / (max - min || 1)) * 100}%`);
+}
+document.addEventListener('input', (e) => { if (e.target?.type === 'range') syncRange(e.target); }, true);
 
 // replaceChildren that skips null/false and flattens arrays, like el().
 export function setChildren(node, ...children) {

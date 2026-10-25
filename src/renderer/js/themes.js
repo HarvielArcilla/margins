@@ -62,10 +62,13 @@ export function isDark(theme) {
   return theme.dark ?? luminance(theme.bg) < 0.3;
 }
 
+let lastChrome = '';
+
 // Paints the app chrome (CSS variables) from a theme.
 export function applyChromeTheme(theme) {
   const dark = isDark(theme);
   const s = document.documentElement.style;
+  if (s.getPropertyValue('--bg') === theme.bg && s.getPropertyValue('--fg') === theme.fg && s.getPropertyValue('--accent') === (theme.accent || theme.link)) return;
   s.setProperty('--bg', theme.bg);
   s.setProperty('--fg', theme.fg);
   s.setProperty('--muted', mix(theme.fg, theme.bg, 0.45));
@@ -80,7 +83,11 @@ export function applyChromeTheme(theme) {
   s.setProperty('--shadow', dark ? '0 18px 50px rgba(0,0,0,.55)' : '0 18px 50px rgba(40,30,10,.16)');
   document.documentElement.dataset.dark = dark ? '1' : '0';
   document.documentElement.dataset.eink = theme.eink ? '1' : '0';
-  window.api?.window.chrome({ bg: theme.bg, fg: mix(theme.fg, theme.bg, 0.3), dark });
+  // Only touch the native title bar when it actually changes: redrawing it
+  // on every slider tick is visible as flicker on Windows.
+  const chrome = { bg: theme.bg, fg: mix(theme.fg, theme.bg, 0.3), dark };
+  const key = JSON.stringify(chrome);
+  if (key !== lastChrome) { lastChrome = key; window.api?.window.chrome(chrome); }
 }
 
 export const HIGHLIGHT_COLORS = [

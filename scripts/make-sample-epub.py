@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds a small EPUB 3 sampler for trying out Marginalia's features.
+"""Builds a small EPUB 3 sampler for trying out Margins's features.
 
 Usage: python3 scripts/make-sample-epub.py samples/sample.epub
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 
 TITLE = "A Reader's Sampler"
-AUTHOR = "Marginalia"
+AUTHOR = "Margins"
 
 SENTENCES = [
     "The lamp on the desk threw a soft circle of light across the open pages.",

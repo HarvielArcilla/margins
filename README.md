@@ -1,6 +1,6 @@
-# Marginalia
+# Margins
 
-A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bundled reading fonts (or your own), tune spacing down to a hundredth of an em, choose from 28 colour schemes, highlight in ten styles, turn pages nine different ways with any input you like, and see exactly how much you read.
+A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bundled reading fonts (or your own), tune spacing down to a hundredth of an em, choose from 28 colour schemes, highlight in ten styles, turn pages with nine animations and any input you like, and see exactly how much you read.
 
 ![Reading with highlights](docs/screenshots/reader.png)
 
@@ -16,8 +16,10 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 **Spacing**
 - Line, letter and word spacing; paragraph spacing and first-line indent
 - Alignment (book / left / justify / centre) and hyphenation
-- Side and top/bottom margins, maximum line length, gap between pages
-- One page, two pages, or automatic spreads above a width you choose
+- Line length measured in characters, so it scales with the font size
+- Side and top/bottom margins that shrink gracefully on small windows
+- One page, two pages, or automatic spreads that appear only when each page can hold a full line
+- The page stays put when you resize the window or change settings
 
 **Colour & atmosphere**
 - 28 colour schemes: Paper, Sepia, Cream, Parchment, Mint, Sky, Rose, E-ink, Solarized, Gruvbox, Nord, Dracula, Night, OLED black, Red Night, Terminal, high-contrast and more
@@ -35,13 +37,16 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 ![Highlight toolbar](docs/screenshots/highlight-toolbar.png)
 
 **Page turning**
-- Animations: none, slide, push, fade, zoom, blur, 3D book flip, page peel, cover
+- Animations: none, slide, push, fade, zoom, rise, 3D book flip, page curl, cover
+- In a two-page spread the flip and curl turn a single leaf around the spine, like a real book
 - Paginated, scroll-a-chapter, or endless scroll
 - Click/tap zone layouts (thirds, Kindle-style, halves, one-handed, tap-anywhere, top/bottom) with a live diagram, and a left-handed swap
 - Arrow keys, Space, Page Up/Down (Bluetooth page-turner pedals and presentation clickers), Vim keys, WASD, media & volume keys
 - Mouse wheel, trackpad swipe, touch swipe
 - Game controllers (bumpers, triggers, D-pad, stick)
 - Hands-free auto-turn on a timer and teleprompter-style auto-scroll
+
+![Turning one leaf of a two-page spread](docs/screenshots/page-flip.png)
 
 **Templates**
 - 14 one-click looks: Classic Novel, Modern Essay, Comfort, Night Owl, Lights Out, Dyslexia Friendly, Large Print, Compact, Academic, E-ink, Speed Reader, Typewriter, Manuscript
@@ -70,6 +75,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Full-text search, collapsible table of contents with percentages, go to percentage, progress scrubber
 - Read aloud with system voices, word-by-word highlighting, automatic page turning
 - Right-to-left books turn the right way
+- Display options for Windows HDR / NVIDIA auto-HDR (colours pinned to sRGB) and a hardware-acceleration switch if your GPU flickers
 - Everything stays on your computer
 
 ## Screenshots
@@ -83,10 +89,10 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 
 ## Install
 
-Download the latest `.dmg` (macOS, Apple Silicon or Intel) or `.exe` (Windows installer or portable) from [Releases](https://github.com/HarvielArcilla/marginalia/releases).
+Download the latest `.dmg` (macOS, Apple Silicon or Intel) or `.exe` (Windows installer or portable) from [Releases](https://github.com/HarvielArcilla/margins/releases).
 
 The builds are not code-signed yet:
-- **macOS:** right-click the app → **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/Marginalia.app`.
+- **macOS:** right-click the app → **Open** the first time, or run `xattr -dr com.apple.quarantine /Applications/Margins.app`.
 - **Windows:** in the SmartScreen prompt choose **More info → Run anyway**.
 
 ## Build from source
@@ -94,8 +100,8 @@ The builds are not code-signed yet:
 Requires Node.js 20 or newer.
 
 ```bash
-git clone https://github.com/HarvielArcilla/marginalia.git
-cd marginalia
+git clone https://github.com/HarvielArcilla/margins.git
+cd margins
 npm install          # also copies the bundled fonts into src/renderer/fonts
 npm start
 
@@ -144,7 +150,7 @@ scripts/         font bundling, sample book
 
 Highlights and fixation emphasis are drawn with the CSS Custom Highlight API rather than by wrapping text in elements, so the book's DOM is never modified and saved positions stay valid.
 
-Your library lives in the app's data folder (`~/Library/Application Support/Marginalia` on macOS, `%APPDATA%\Marginalia` on Windows).
+Your library lives in the app's data folder (`~/Library/Application Support/Margins` on macOS, `%APPDATA%\Margins` on Windows).
 
 ## Credits
 

@@ -15,7 +15,8 @@ export function buildContentCss(s, theme) {
 
   out.push(fontFaceCssFor([s.font, headingName]));
 
-  out.push(`:root { color-scheme: ${dark ? 'dark' : 'light'}; }
+  out.push(`/* always light: matches the frame, so no opaque backdrop flashes in */
+  :root { color-scheme: light; }
   html {
     -webkit-font-smoothing: ${s.fontSmoothing === 'antialiased' ? 'antialiased' : s.fontSmoothing === 'subpixel' ? 'subpixel-antialiased' : 'auto'};
     text-rendering: optimizeLegibility;

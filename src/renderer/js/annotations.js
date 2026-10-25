@@ -167,7 +167,7 @@ function renderInContents(contents) {
   }
   let tag = doc.getElementById('m-anno-style');
   if (!tag) { tag = doc.createElement('style'); tag.id = 'm-anno-style'; doc.head.append(tag); }
-  tag.textContent = css;
+  if (tag.textContent !== css) tag.textContent = css;
 }
 
 export function renderAll() { for (const c of liveContents()) renderInContents(c); }
@@ -344,7 +344,7 @@ document.addEventListener('pointerdown', (e) => {
 // ---------- export ----------
 export function toMarkdown() {
   const m = R.meta;
-  const lines = [`# ${m.title}`, m.author ? `*${m.author}*` : '', '', `Exported from Marginalia on ${new Date().toLocaleDateString()}`, ''];
+  const lines = [`# ${m.title}`, m.author ? `*${m.author}*` : '', '', `Exported from Margins on ${new Date().toLocaleDateString()}`, ''];
   let lastChapter = null;
   for (const a of sortByPosition(items)) {
     if (a.chapter !== lastChapter) { lines.push(`## ${a.chapter || 'Untitled section'}`, ''); lastChapter = a.chapter; }
@@ -388,7 +388,7 @@ export async function importAnnotations() {
     for (const a of incoming) if (!known.has(`${a.type}|${a.cfi}`)) { items.push({ ...a, id: uid() }); n++; }
     save(); renderAll();
     toast(`Imported ${n} annotation${n === 1 ? '' : 's'}`);
-  } catch { toast('That file is not a Marginalia annotations export'); }
+  } catch { toast('That file is not a Margins annotations export'); }
 }
 
 export async function jumpTo(a) {

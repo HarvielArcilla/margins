@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('api', {
   },
   bookCache: { get: call('bookcache:get'), set: call('bookcache:set') },
   info: call('app:info'),
+  graphics: { get: call('graphics:get'), set: call('graphics:set') },
+  relaunch: call('app:relaunch'),
   pathForFile: (file) => webUtils.getPathForFile(file),
   on: (channel, fn) => {
     const allowed = ['menu', 'library:open-path', 'window:fullscreen'];

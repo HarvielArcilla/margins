@@ -64,12 +64,13 @@ async function animate(kind, dir, ms, go) {
       [{ transform: 'scale(1)', opacity: 1 }, { transform: `scale(${dir > 0 ? 0.94 : 1.04})`, opacity: 0 }],
       [{ transform: `scale(${dir > 0 ? 1.04 : 0.94})`, opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
     ],
-    blur: [
-      [{ filter: 'blur(0)', opacity: 1 }, { filter: 'blur(6px)', opacity: 0.2 }],
-      [{ filter: 'blur(6px)', opacity: 0.2 }, { filter: 'blur(0)', opacity: 1 }],
+    rise: [
+      [{ transform: 'translateY(0)', opacity: 1 }, { transform: `translateY(${-sign * 3}%)`, opacity: 0 }],
+      [{ transform: `translateY(${sign * 3}%)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }],
     ],
-  }[kind];
-  if (!frames) return go();
+  }[kind] || null;
+  if (!frames) return animate('slide', dir, ms, go);
+  viewer.style.willChange = 'transform, opacity';
   await viewer.animate(frames[0], { duration: half, easing: easeIn, fill: 'forwards' }).finished;
   await go();
   await nextPaint();
@@ -77,57 +78,148 @@ async function animate(kind, dir, ms, go) {
   await a.finished;
   a.cancel();
   viewer.getAnimations().forEach((x) => x.cancel());
+  viewer.style.willChange = '';
 }
 
-// Realistic turns: photograph the current page, put the photo on top, turn
-// the real page underneath, then animate the photo away.
+// Realistic turns photograph the current spread, lay the photo over the
+// stage, move the real book to its new page underneath, then animate pieces
+// of the photo away. In a two-page spread only one leaf turns: going forward
+// the right-hand page lifts off the spine, revealing the new right page, and
+// lands on the left, uncovering the new left page as it comes down. Going
+// back, the left-hand page does the same in the other direction. With a
+// single page, the page turns away from its left edge (forward) or the
+// previous page settles down from the left (back).
 async function snapshotTurn(kind, sign, ms, go) {
   const stage = $('#stage');
   const r = stage.getBoundingClientRect();
-  let url;
-  try { url = await window.api.window.capture({ x: r.left, y: r.top, width: r.width, height: r.height }); } catch { url = null; }
-  if (!url) return go();
-  const overlay = document.createElement('div');
-  overlay.className = `turn-overlay turn-${kind}`;
+  const W = r.width, H = r.height;
+  let url = null;
+  const t0 = performance.now();
+  try { url = await window.api.window.capture({ x: r.left, y: r.top, width: W, height: H }); } catch { url = null; }
+  // If grabbing the frame is slow (some GPU drivers) fall back to a slide
+  // rather than leave the reader waiting.
+  if (!url || performance.now() - t0 > 250) return animate('slide', sign * (R.rtl ? -1 : 1), ms, go);
   const img = new Image();
   img.src = url;
-  await img.decode().catch(() => {});
-  overlay.append(img);
-  const shade = document.createElement('div');
-  shade.className = 'turn-shade';
-  overlay.append(shade);
-  stage.append(overlay);
+  try { await img.decode(); } catch { return go(); }
+  if (!img.naturalWidth) return go();
+
+  const L = R.layout || { cols: 1, padX: 0, width: W };
+  const spread = L.cols === 2;
+  const forward = sign > 0;
+  const bg = `url(${url})`;
+
+  const root = div('turn-overlay');
+  const part = (x0, x1) => {
+    const d = div('turn-part');
+    Object.assign(d.style, { left: `${x0}px`, width: `${x1 - x0}px`, backgroundImage: bg, backgroundSize: `${W}px ${H}px`, backgroundPosition: `${-x0}px 0` });
+    return d;
+  };
+
+  if (kind === 'cover') {
+    const sheet = part(0, W);
+    sheet.classList.add('turn-sheet');
+    root.append(sheet);
+    stage.append(root);
+    await go();
+    await nextPaint();
+    await sheet.animate([
+      { transform: 'translateX(0)' },
+      { transform: `translateX(${forward ? -102 : 102}%)` },
+    ], { duration: Math.max(ms * 1.4, 240), easing: 'cubic-bezier(.3,.6,.25,1)', fill: 'forwards' }).finished.catch(() => {});
+    root.remove();
+    return;
+  }
+
+  // Geometry: the hinge is the spine in a spread, the page's left edge otherwise.
+  // The page itself spans the book area; the window margins stay put.
+  const x0 = Math.max(0, Math.round(L.padX || 0));
+  const x1 = Math.min(W, Math.round((L.padX || 0) + (L.width || W)));
+  const spine = spread ? Math.round((x0 + x1) / 2) : x0;
+  let leaf = null, still = null, landDir;
+  if (spread) {
+    if (forward) { leaf = part(spine, x1); still = part(x0, spine); landDir = -1; } else { leaf = part(x0, spine); still = part(spine, x1); landDir = 1; }
+  } else if (forward) {
+    leaf = part(x0, x1); landDir = 0;
+  } else {
+    still = part(x0, x1); landDir = 1; // previous page settles down from the left
+  }
+  const cast = div('turn-cast');
+  const edge = div('turn-edge');
+  if (still) root.append(still);
+  root.append(cast);
+  if (leaf) {
+    leaf.style.transformOrigin = forward ? 'left center' : 'right center';
+    const shade = div('turn-leaf-shade');
+    leaf.append(shade);
+    root.append(leaf);
+  }
+  root.append(edge);
+  stage.append(root);
   await go();
   await nextPaint();
-  await sleep(16);
-  const duration = Math.max(ms * 1.6, 260);
-  const forward = sign > 0;
-  let anim;
-  if (kind === 'flip') {
-    overlay.style.transformOrigin = forward ? 'left center' : 'right center';
-    anim = overlay.animate([
-      { transform: 'perspective(2200px) rotateY(0deg)' },
-      { transform: `perspective(2200px) rotateY(${forward ? -100 : 100}deg)` },
-    ], { duration, easing: 'cubic-bezier(.45,.05,.55,.95)', fill: 'forwards' });
-    shade.animate([{ opacity: 0 }, { opacity: 0.55 }], { duration, fill: 'forwards' });
-  } else if (kind === 'cover') {
-    anim = overlay.animate([
-      { transform: 'translateX(0)', boxShadow: '0 0 0 rgba(0,0,0,0)' },
-      { transform: `translateX(${forward ? -105 : 105}%)`, boxShadow: '0 0 40px rgba(0,0,0,.35)' },
-    ], { duration, easing: 'cubic-bezier(.3,.6,.3,1)', fill: 'forwards' });
-  } else {
-    // peel: the corner lifts and the page curls off toward the spine
-    overlay.style.transformOrigin = forward ? 'left bottom' : 'right bottom';
-    const sx = forward ? -1 : 1;
-    anim = overlay.animate([
-      { transform: 'perspective(1800px) rotateY(0) rotateZ(0) skewY(0)', clipPath: 'inset(0 0 0 0)' },
-      { transform: `perspective(1800px) rotateY(${sx * 35}deg) rotateZ(${sx * 3}deg) skewY(${sx * 4}deg)`, clipPath: 'inset(0 0 0 0)', offset: 0.45 },
-      { transform: `perspective(1800px) rotateY(${sx * 95}deg) rotateZ(${sx * 6}deg) skewY(${sx * 6}deg)`, clipPath: 'inset(0 0 0 0)' },
-    ], { duration: duration * 1.1, easing: 'ease-in', fill: 'forwards' });
-    shade.animate([{ opacity: 0 }, { opacity: 0.25, offset: 0.4 }, { opacity: 0.6 }], { duration: duration * 1.1, fill: 'forwards' });
-  }
-  await anim.finished.catch(() => {});
-  overlay.remove();
+
+  const peel = kind === 'peel';
+  const duration = Math.max(ms * (peel ? 2 : 1.8), 300);
+  const stillW = still ? parseFloat(still.style.width) : 0;
+  const stillX = still ? parseFloat(still.style.left) : 0;
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+
+  await new Promise((resolve) => {
+    const start = performance.now();
+    const frame = (now) => {
+      const t = Math.min(1, (now - start) / duration);
+      const e = ease(t);
+      // Without a leaf (single page, going back) the whole move is a landing.
+      // single page forward: just the lift; spread: lift then land; back: land
+      const theta = leaf ? (still ? e * 180 : e * 90) : 90 + e * 90;
+      if (leaf) {
+        if (theta <= 90) {
+          const a = forward ? -theta : theta;
+          const lift = Math.sin((theta * Math.PI) / 180);
+          const curl = peel ? `rotateZ(${(forward ? -1 : 1) * lift * 4}deg) skewY(${(forward ? -1 : 1) * lift * 5}deg)` : '';
+          leaf.style.transform = `perspective(${Math.max(W, 1400) * 1.6}px) rotateY(${a}deg) ${curl}`;
+          leaf.firstChild.style.opacity = String(lift * 0.55);
+          leaf.style.visibility = 'visible';
+          // shadow the lifting page casts on the page it uncovers
+          const lx = parseFloat(leaf.style.left), lw = parseFloat(leaf.style.width);
+          Object.assign(cast.style, { left: `${lx}px`, width: `${lw}px`, opacity: String(0.5 * (1 - lift) * lift * 2) });
+          cast.dataset.side = forward ? 'left' : 'right';
+        } else {
+          leaf.style.visibility = 'hidden';
+          cast.style.opacity = '0';
+        }
+      }
+      // Landing: uncover the new page from the hinge outward, with the edge
+      // of the falling page drawn as a soft shadow line.
+      if (theta > 90 && still && landDir) {
+        const p = -Math.cos((theta * Math.PI) / 180); // projected width of the falling page, 0 → 1
+        const covered = stillW * p;
+        if (landDir < 0) { // landing on the left: reveal from the spine leftward
+          still.style.clipPath = `inset(0 ${covered}px 0 0)`;
+          placeEdge(stillX + stillW - covered, -1, p);
+        } else { // landing on the right (or single page from the left edge)
+          still.style.clipPath = `inset(0 0 0 ${covered}px)`;
+          placeEdge(stillX + covered, 1, p);
+        }
+      } else if (theta > 90 && !still) {
+        edge.style.opacity = '0';
+      }
+      if (t < 1) requestAnimationFrame(frame); else resolve();
+    };
+    function placeEdge(x, dir, p) {
+      edge.dataset.dir = dir < 0 ? 'left' : 'right';
+      Object.assign(edge.style, { left: `${x - (dir < 0 ? 0 : 36)}px`, opacity: String(Math.min(1, (1 - p) * 3) * 0.9) });
+    }
+    requestAnimationFrame(frame);
+  });
+  root.remove();
+}
+
+function div(cls) {
+  const d = document.createElement('div');
+  d.className = cls;
+  return d;
 }
 
 // ---------- keyboard ----------
@@ -338,8 +430,8 @@ export const ANIMATIONS = [
   { id: 'push', name: 'Push' },
   { id: 'fade', name: 'Fade' },
   { id: 'zoom', name: 'Zoom' },
-  { id: 'blur', name: 'Blur' },
+  { id: 'rise', name: 'Rise' },
   { id: 'flip', name: 'Book flip (3D)' },
-  { id: 'peel', name: 'Page peel' },
+  { id: 'peel', name: 'Page curl' },
   { id: 'cover', name: 'Cover' },
 ];

@@ -1,18 +1,18 @@
 {
-  "name": "marginalia",
-  "productName": "Marginalia",
+  "name": "margins",
+  "productName": "Margins",
   "version": "1.0.0",
-  "description": "A deeply customisable ePub reader for macOS and Windows — fonts, spacing, colour schemes, highlights, page-turn styles, templates and reading stats.",
+  "description": "A deeply customisable ePub reader for macOS and Windows \u2014 fonts, spacing, colour schemes, highlights, page-turn styles, templates and reading stats.",
   "main": "src/main/main.js",
   "author": {
     "name": "Harviel Arcilla",
     "url": "https://harvielarcilla.github.io"
   },
   "license": "MIT",
-  "homepage": "https://github.com/HarvielArcilla/marginalia",
+  "homepage": "https://github.com/HarvielArcilla/margins",
   "repository": {
     "type": "git",
-    "url": "https://github.com/HarvielArcilla/marginalia.git"
+    "url": "https://github.com/HarvielArcilla/margins.git"
   },
   "keywords": [
     "epub",
@@ -68,9 +68,9 @@
     "electron-builder": "^26.18.0"
   },
   "build": {
-    "appId": "io.github.harvielarcilla.marginalia",
-    "productName": "Marginalia",
-    "copyright": "Copyright © 2026 Harviel Arcilla",
+    "appId": "io.github.harvielarcilla.margins",
+    "productName": "Margins",
+    "copyright": "Copyright \u00a9 2026 Harviel Arcilla",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -112,7 +112,7 @@
       "darkModeSupport": true
     },
     "dmg": {
-      "title": "Marginalia"
+      "title": "Margins"
     },
     "win": {
       "target": [
@@ -138,7 +138,7 @@
       "perMachine": false
     },
     "portable": {
-      "artifactName": "Marginalia--portable.exe"
+      "artifactName": "Margins-${version}-portable.exe"
     },
     "publish": null,
     "linux": {

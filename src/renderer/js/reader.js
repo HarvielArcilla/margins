@@ -76,7 +76,7 @@ export async function closeBook({ keepView = false } = {}) {
   const oldBook = R.book;
   // let any page still loading finish before tearing the book down
   setTimeout(() => { try { oldBook?.destroy(); } catch { /* already gone */ } }, 1500);
-  Object.assign(R, { meta: null, book: null, rendition: null, toc: [], location: null, open: false, cache: {} });
+  Object.assign(R, { meta: null, book: null, rendition: null, toc: [], location: null, anchor: null, open: false, cache: {} });
   setChildren($('#book'));
   detachBook();
   annotations.reset();
@@ -100,41 +100,74 @@ function resolveTocSpine() {
 }
 
 // ---------- rendition ----------
-function layoutFor(s) {
-  const stage = $('#stage');
-  const W = stage.clientWidth, H = stage.clientHeight;
+// Works out the page geometry for the stage size and settings:
+// - side and top margins shrink on small windows instead of eating the page
+// - line length is in characters, so it scales with the font size
+// - in "auto", two pages appear only when each can hold a comfortable line
+// - the text block is centred, and the footer lines up with its edges
+export function layoutFor(s, stageEl = $('#stage')) {
+  const W = stageEl.clientWidth, H = stageEl.clientHeight;
+  const fs = s.fontSize;
   const paginated = s.flow === 'paginated';
-  const gap = paginated ? s.columnGap : 0;
+  const m = Math.round(Math.min(s.marginH, Math.max(14, W * 0.055)));
+  const mv = Math.round(Math.min(s.marginV, Math.max(6, H * 0.035)));
+  const measure = s.lineLength > 0 && s.lineLength < 130 ? s.lineLength * fs * 0.5 : Infinity;
+  const gap = paginated ? even(Math.max(s.columnGap, fs * 2)) : 0;
   let cols = 1;
-  if (paginated && (s.spread === 'always' || (s.spread === 'auto' && W - 2 * s.marginH >= s.spreadThreshold))) cols = 2;
-  let padX = Math.max(0, s.marginH - gap / 2);
-  if (s.maxLineWidth > 0) {
-    const maxContent = cols * (s.maxLineWidth + gap);
-    padX = Math.max(padX, (W - maxContent) / 2);
+  if (paginated && s.spread === 'always') cols = 2;
+  else if (paginated && s.spread === 'auto') {
+    const perPage = (W - 2 * m + gap) / 2 - gap;
+    cols = perPage >= Math.max(300, Math.min(measure, fs * 34) * 0.88) ? 2 : 1;
   }
-  return { cols, gap, padX: Math.floor(padX), padY: s.marginV, W, H };
+  // epub.js puts half the gap inside each edge of each page
+  const avail = W - 2 * m + gap;
+  let textW, width, inset;
+  if (paginated) {
+    textW = Math.max(160, Math.min(measure, avail / cols - gap));
+    width = even(Math.min(W, cols * (textW + gap)));
+    inset = gap / 2;
+  } else {
+    // scroll modes: epub.js pads the page by a twelfth of its width each side
+    textW = Math.max(160, Math.min(measure, W - 2 * m));
+    width = even(Math.min(W, textW * 1.2));
+    inset = width / 12;
+  }
+  const padX = Math.max(0, Math.floor((W - width) / 2));
+  const height = Math.max(120, H - 2 * mv);
+  return { cols, gap, padX, padY: mv, width, height, inset: Math.round(inset), textW: Math.round(textW), W, H };
 }
 
-function applyLayoutPadding(L) {
-  const v = $('#viewer');
-  v.style.padding = `${L.padY}px ${L.padX}px`;
+const even = (n) => 2 * Math.round(n / 2);
+
+function placeBook(L) {
+  const book = $('#book');
+  Object.assign(book.style, { left: `${L.padX}px`, top: `${L.padY}px`, width: `${L.width}px`, height: `${L.height}px` });
+  const rv = $('#reader-view').style;
+  // footer and header text line up with the text block, not the window
+  rv.setProperty('--text-left', `${L.padX + L.inset}px`);
+  rv.setProperty('--text-right', `${L.padX + L.inset}px`);
+  R.layout = L;
 }
 
 async function createRendition(at) {
   const s = getSettings();
   const L = layoutFor(s);
   R.cols = L.cols;
-  applyLayoutPadding(L);
+  R.gap = L.gap;
+  placeBook(L);
   try { R.rendition?.destroy(); } catch { /* ignore */ }
   setChildren($('#book'));
   document.body.dataset.flow = s.flow;
 
+  // Fixed pixel sizes: epub.js then doesn't re-render on every window resize
+  // event (which flickers while dragging); we resize it once, when it settles.
   const opts = {
-    width: '100%',
-    height: '100%',
+    width: L.width,
+    height: L.height,
     allowScriptedContent: false,
     spread: L.cols === 2 ? 'always' : 'none',
     minSpreadWidth: 0,
+    resizeOnOrientationChange: false,
   };
   if (s.flow === 'paginated') Object.assign(opts, { flow: 'paginated', manager: 'default', gap: L.gap });
   else if (s.flow === 'scrolled') Object.assign(opts, { flow: 'scrolled-doc', manager: 'default' });
@@ -154,28 +187,64 @@ async function createRendition(at) {
   if (!R.toc.some((t) => t.spineIndex >= 0)) resolveTocSpine();
 }
 
+// After a layout change, make sure the page on screen contains the anchor;
+// if the first display landed before layout finished, show it again.
+async function settleOn(cfi) {
+  if (!cfi || !R.rendition) return;
+  await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  if (!cfiOnPage(cfi, R.location)) await R.rendition.display(cfi);
+}
+
+function cfiOnPage(cfi, loc) {
+  if (!cfi || !loc) return false;
+  try {
+    const c = new window.ePub.CFI();
+    return c.compare(cfi, loc.start.cfi) >= 0 && c.compare(cfi, loc.end.cfi) <= 0;
+  } catch { return false; }
+}
+
 let relayoutBusy = false;
+let relayoutAgain = false;
 export async function relayout({ recreate = false } = {}) {
-  if (!R.rendition || relayoutBusy) return;
+  if (!R.rendition) return;
+  if (relayoutBusy) { relayoutAgain = true; return; }
   relayoutBusy = true;
   try {
     const s = getSettings();
-    const cfi = R.location?.start?.cfi;
+    // The anchor is where the reader actually is; it doesn't drift when the
+    // page boundaries move during a relayout.
+    const cfi = R.anchor || R.location?.start?.cfi;
+    R.relayouting = true;
     const L = layoutFor(s);
-    if (recreate || L.cols !== R.cols) {
+    const prev = R.layout;
+    const sameBox = prev && prev.width === L.width && prev.height === L.height;
+    if (recreate || !sameBox || L.cols !== R.cols || L.gap !== R.gap) {
+      // A new size means new page breaks; rebuilding the rendition is more
+      // reliable than epub.js's in-place resize, which can re-display an
+      // earlier position after the fact.
       await createRendition(cfi);
-    } else {
-      applyLayoutPadding(L);
-      R.rendition.resize();
-      if (cfi) await R.rendition.display(cfi);
+    } else if (cfi) {
+      await R.rendition.display(cfi);
     }
+    await settleOn(cfi);
   } finally {
     relayoutBusy = false;
+    R.relayouting = false;
   }
+  if (relayoutAgain) { relayoutAgain = false; relayout(); }
 }
 
-const onWindowResize = debounce(() => relayout(), 180);
-window.addEventListener('resize', () => { if (R.open) onWindowResize(); });
+// While the window is being dragged, keep the page still and blank out to
+// the page colour; lay out once when resizing stops.
+const onWindowResize = debounce(async () => {
+  await relayout();
+  $('#reader-view').classList.remove('resizing');
+}, 200);
+window.addEventListener('resize', () => {
+  if (!R.open) return;
+  $('#reader-view').classList.add('resizing');
+  onWindowResize();
+});
 
 // ---------- page content ----------
 function onContentReady(contents) {
@@ -193,7 +262,11 @@ function onContentReady(contents) {
 function styleContents(contents) {
   const s = getSettings();
   const tag = contents.document.getElementById('m-reader-style');
-  if (tag) tag.textContent = buildContentCss(s, R.theme || findTheme(s));
+  if (!tag) return;
+  // Rewriting an identical stylesheet still re-lays out the page, so only
+  // write when something visible changed.
+  const css = buildContentCss(s, R.theme || findTheme(s));
+  if (tag.textContent !== css) tag.textContent = css;
 }
 
 function attachContentListeners(contents) {
@@ -238,16 +311,47 @@ export function applyTheme() {
   }
   R.theme = theme;
   applyChromeTheme(theme);
-  const stage = $('#reader-view');
-  stage.style.setProperty('--brightness', String(1 - s.brightness / 100));
-  stage.style.setProperty('--warmth', String(s.warmth / 100 * 0.4));
-  stage.style.setProperty('--texture', String(s.paperTexture / 100 * (isDark(theme) ? 0.35 : 0.55)));
-  stage.style.setProperty('--vignette', String(s.vignette / 100));
   const rv = $('#reader-view');
+  // Overlays at zero strength are removed entirely rather than left as
+  // invisible full-window layers the GPU still has to composite.
+  const fx = {
+    dim: 1 - s.brightness / 100,
+    warm: (s.warmth / 100) * 0.22,
+    texture: (s.paperTexture / 100) * (isDark(theme) ? 0.5 : 0.75),
+    vignette: s.vignette / 100,
+  };
+  for (const [k, v] of Object.entries(fx)) {
+    rv.style.setProperty(`--fx-${k}`, String(v));
+    const node = rv.querySelector(`.fx-${k}`);
+    if (node) node.hidden = v <= 0.001;
+  }
+  if (fx.texture > 0) ensureTexture();
   rv.classList.toggle('no-header', !s.showHeader);
   rv.classList.toggle('no-footer', !s.showFooter);
   rv.classList.toggle('immersive', !!s.hideChromeWhileReading);
   return theme;
+}
+
+// A small tile of paper grain, drawn once to a canvas. (An SVG noise filter
+// is re-rasterised on every composite and is a common source of flicker.)
+let textureUrl = null;
+function ensureTexture() {
+  if (textureUrl) return;
+  const c = document.createElement('canvas');
+  c.width = c.height = 192;
+  const ctx = c.getContext('2d');
+  const img = ctx.createImageData(192, 192);
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = rnd();
+    const fibre = rnd() < 0.015 ? 0.5 : 0;
+    img.data[i] = 90; img.data[i + 1] = 72; img.data[i + 2] = 48;
+    img.data[i + 3] = Math.round((v * v * 0.16 + fibre * 0.25) * 255);
+  }
+  ctx.putImageData(img, 0, 0);
+  textureUrl = c.toDataURL('image/png');
+  document.documentElement.style.setProperty('--paper-grain', `url(${textureUrl})`);
 }
 
 let chromeTimer = null;
@@ -267,8 +371,8 @@ function revealChromeNear(y) {
 }
 document.addEventListener('mousemove', (e) => { if (R.open) { revealChromeNear(e.clientY); focus.pointer(e.clientY); stats.activity(); } });
 
-const RECREATE_KEYS = new Set(['flow', 'spread', 'columnGap', 'spreadThreshold']);
-const RELAYOUT_KEYS = new Set(['marginH', 'marginV', 'maxLineWidth', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
+const RECREATE_KEYS = new Set(['flow']);
+const RELAYOUT_KEYS = new Set(['spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
   'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'publisherStyles', 'fontWeight', 'headingFont', 'headingScale',
   'imageFit', 'textAlign', 'hyphenation', 'dropCaps', 'smallCapsHeadings']);
 
@@ -289,6 +393,9 @@ function onSettingsChanged(s, changed) {
 function onRelocated(location) {
   const prev = R.location;
   R.location = location;
+  // Keep the anchor while it is still on screen (relayouts, late events);
+  // once the reader moves to a page without it, the new page becomes it.
+  if (!R.relayouting && !cfiOnPage(R.anchor, location)) R.anchor = location.start.cfi;
   updateFooter();
   saveProgress();
   sidebar.locationChanged();

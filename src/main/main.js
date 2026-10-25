@@ -8,6 +8,21 @@ const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const store = require('./store');
 
+// Graphics options are read before the app is ready because Chromium only
+// takes them at startup. They live outside the main store (which needs the
+// app to be ready) in a tiny JSON file.
+const GPU_FILE = path.join(app.getPath('userData'), 'graphics.json');
+function readGraphics() {
+  const defaults = { hardwareAcceleration: true, srgb: process.platform === 'win32' };
+  try { return { ...defaults, ...JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')) }; } catch { return defaults; }
+}
+const graphics = readGraphics();
+if (!graphics.hardwareAcceleration) app.disableHardwareAcceleration();
+// Pin colours to sRGB. With Windows HDR / NVIDIA RTX auto-HDR on, Chromium
+// otherwise re-tonemaps every frame, which shows up as washed-out colours and
+// flickering when layers change.
+if (graphics.srgb) app.commandLine.appendSwitch('force-color-profile', 'srgb');
+
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
 ]);
@@ -59,10 +74,10 @@ function createWindow() {
     minWidth: 520,
     minHeight: 420,
     show: false,
-    backgroundColor: '#f7f3ea',
+    backgroundColor: '#fbf9f4',
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 14, y: 14 },
-    titleBarOverlay: isMac ? false : { color: '#00000000', symbolColor: '#555555', height: 40 },
+    titleBarOverlay: isMac ? false : { color: '#fbf9f4', symbolColor: '#6b665e', height: 40 },
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -134,7 +149,7 @@ function buildMenu() {
     { role: 'windowMenu' },
     {
       role: 'help',
-      submenu: [{ label: 'Project on GitHub', click: () => shell.openExternal('https://github.com/HarvielArcilla/marginalia') }],
+      submenu: [{ label: 'Project on GitHub', click: () => shell.openExternal('https://github.com/HarvielArcilla/margins') }],
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -257,6 +272,14 @@ function registerIpc() {
   });
   handle('bookcache:get', (id) => store.readJson(path.join('cache', `${id}.json`), {}));
   handle('bookcache:set', (id, data) => store.writeJson(path.join('cache', `${id}.json`), data));
+  handle('graphics:get', () => ({ ...graphics, active: { ...graphics } }));
+  handle('graphics:set', (patch) => {
+    const next = { ...readGraphics(), ...patch };
+    fs.mkdirSync(path.dirname(GPU_FILE), { recursive: true });
+    fs.writeFileSync(GPU_FILE, JSON.stringify(next));
+    return next;
+  });
+  handle('app:relaunch', () => { app.relaunch(); app.exit(0); });
   handle('app:info', () => ({ platform: process.platform, version: app.getVersion() }));
 }
 

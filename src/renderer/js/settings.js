@@ -29,11 +29,10 @@ export const DEFAULTS = {
   // Layout
   flow: 'paginated', // paginated | scrolled | continuous
   spread: 'auto', // auto | none | always
-  marginH: 56,
-  marginV: 24,
-  maxLineWidth: 700, // px per column, 0 = no limit
+  marginH: 72,
+  marginV: 36,
+  lineLength: 66, // characters per line; 130 = no limit
   columnGap: 64,
-  spreadThreshold: 1100, // window width at which 'auto' shows two pages
   imageFit: 'contain', // contain | width | original
   dimImages: 0, // 0-60 %
   invertImagesInDark: false,

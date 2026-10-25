@@ -167,7 +167,7 @@ export async function renderStatsView(library) {
           el('label.inline-field', 'Idle after',
             el('input.input.tiny', { type: 'number', min: 15, max: 900, value: s.idleSeconds, onchange: (e) => setSettings({ idleSeconds: Math.max(15, +e.target.value || 90) }) }), 'sec'),
           iconButton('download', 'Export stats as JSON', async () => {
-            const p = await window.api.file.save({ defaultPath: 'marginalia-stats.json', content: JSON.stringify(data, null, 2), filters: [{ name: 'JSON', extensions: ['json'] }] });
+            const p = await window.api.file.save({ defaultPath: 'margins-stats.json', content: JSON.stringify(data, null, 2), filters: [{ name: 'JSON', extensions: ['json'] }] });
             if (p) toast('Exported');
           }),
           iconButton('trash', 'Reset all stats', async () => {
@@ -215,7 +215,7 @@ function barChart(days) {
   const max = Math.max(goal * 1.2, ...vals.map((v) => v.m), 10);
   const y = (m) => H - 20 - (m / max) * (H - 36);
   let svg = `<svg viewBox="0 0 ${W} ${H}" class="chart" preserveAspectRatio="none" role="img" aria-label="Minutes read per day">`;
-  svg += `<line x1="${pad}" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" class="goal-line"/><text x="${W}" y="${y(goal) - 4}" text-anchor="end" class="axis">goal ${goal}m</text>`;
+  svg += `<line x1="${pad + 4}" x2="${W}" y1="${y(goal)}" y2="${y(goal)}" class="goal-line"/><text x="0" y="${y(goal) + 3}" class="axis">goal</text>`;
   vals.forEach((v, i) => {
     const x = pad + i * bw + 2;
     const h = H - 20 - y(v.m);
