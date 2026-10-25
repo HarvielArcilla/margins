@@ -17,23 +17,26 @@ let tab = 'text';
 let fontQuery = '';
 
 export function isOpen() { return document.body.classList.contains('settings-open'); }
-export function open(which) { if (which) tab = which; document.body.classList.add('settings-open'); render(); }
+export function open(which) { if (which) tab = OLD_TABS[which] || which; document.body.classList.add('settings-open'); render(); }
 export function close() { document.body.classList.remove('settings-open'); disposePreviews(); }
 export function toggle(which) { if (isOpen() && (!which || which === tab)) close(); else open(which); }
 
+// Tabs follow what you are changing: the text, the page, its colors, how
+// pages turn, help while reading, ready-made setups, and the app itself.
 const TABS = [
-  ['text', 'Text', 'aa'],
-  ['spacing', 'Spacing', 'ruler'],
-  ['theme', 'Colors', 'sun'],
-  ['page', 'Layout', 'layers'],
-  ['controls', 'Turning', 'keyboard'],
-  ['templates', 'Templates', 'star'],
-  ['more', 'More', 'sparkle'],
+  ['text', 'Text', 'aa', 'Font, size and text spacing'],
+  ['page', 'Page', 'layers', 'Pages, margins, desk, crease and bars'],
+  ['theme', 'Colors', 'sun', 'Themes and every color'],
+  ['controls', 'Turning', 'keyboard', 'Animation, clicks, keys and hands-free'],
+  ['aids', 'Aids', 'focus', 'Reading aids: highlighting, read aloud, ruler'],
+  ['templates', 'Templates', 'star', 'Style templates and page layouts'],
+  ['app', 'App', 'gear', 'Display and reset'],
 ];
 const TAB_FNS = () => ({
-  text: textTab, spacing: spacingTab, theme: themeTab, page: pageTab,
-  controls: controlsTab, templates: templatesTab, more: moreTab,
+  text: textTab, page: pageTab, theme: themeTab, controls: controlsTab,
+  aids: aidsTab, templates: templatesTab, app: appTab,
 });
+const OLD_TABS = { spacing: 'text', more: 'aids' };
 
 // ---------- search ----------
 // Typing in the search box shows matching settings from every tab at once,
@@ -86,6 +89,7 @@ export function render() {
   const searching = !!query.trim();
   const focused = document.activeElement === searchInput;
   const caret = [searchInput.selectionStart, searchInput.selectionEnd];
+  if (!TAB_FNS()[tab]) tab = 'text';
   const body = el('div.set-body', searching ? searchResults() : TAB_FNS()[tab]());
   setChildren(root,
     el('div.set-head',
@@ -97,8 +101,8 @@ export function render() {
       el('div.seg',
         el('button', { class: !bookScopeActive() ? 'on' : '', onclick: () => { setBookScope(false); render(); } }, 'All books'),
         el('button', { class: bookScopeActive() ? 'on' : '', onclick: () => { setBookScope(true); render(); } }, 'This book'))) : null,
-    el('div.set-tabs', { class: `set-tabs ${searching ? 'dim' : ''}` }, TABS.map(([id, label, ic]) =>
-      el('button.set-tab', { class: `set-tab ${tab === id && !searching ? 'on' : ''}`, title: label, onclick: () => { tab = id; query = ''; searchInput.value = ''; render(); } }, icon(ic, 17), el('span', label)))),
+    el('div.set-tabs', { class: `set-tabs ${searching ? 'dim' : ''}` }, TABS.map(([id, label, ic, about]) =>
+      el('button.set-tab', { class: `set-tab ${tab === id && !searching ? 'on' : ''}`, title: about, onclick: () => { tab = id; query = ''; searchInput.value = ''; render(); } }, icon(ic, 17), el('span', label)))),
     body);
   body.scrollTop = searching ? 0 : scroll;
   if (focused) { searchInput.focus(); try { searchInput.setSelectionRange(...caret); } catch { /* fine */ } }
@@ -164,6 +168,18 @@ function textTab() {
       range('fontWeight', 'Weight', 300, 700, 50, (v) => v),
       range('boldWeight', 'Bold weight', 500, 900, 100, (v) => v),
       range('textShadow', 'Thicken strokes', 0, 0.8, 0.05, (v) => (v ? `${v}px` : 'Off'), 'Adds weight to thin fonts, nice on dark themes.')),
+    section('Text spacing',
+      range('lineHeight', 'Line spacing', 1, 3, 0.05, (v) => (+v).toFixed(2)),
+      range('letterSpacing', 'Letter spacing', -0.05, 0.25, 0.005, em),
+      range('wordSpacing', 'Word spacing', -0.1, 0.6, 0.01, em),
+      range('paragraphSpacing', 'Space between paragraphs', 0, 3, 0.05, em),
+      range('paragraphIndent', 'First-line indent', 0, 5, 0.1, em)),
+    section('Alignment',
+      seg('textAlign', 'Align text', [['publisher', 'Book'], ['left', 'Left'], ['justify', 'Justify'], ['center', 'Center']]),
+      seg('wordBreaks', 'Split words across lines', [['auto', 'Automatically'], ['book', 'Where the book allows'], ['never', 'Never']]),
+      el('p.hint', s.wordBreaks === 'never'
+        ? 'Words always stay whole on one line. Justified text may space out more.'
+        : s.wordBreaks === 'book' ? 'Only at the break points the book itself marks.' : 'Hyphenates long words (6+ letters) for smoother lines.')),
     section('Headings',
       select('headingFont', 'Heading font', [['same', 'Same as body'], ['publisher', 'Publisher’s choice'],
         ...listFonts().filter((f) => f.category !== 'system').map((f) => [f.name, f.name])]),
@@ -175,7 +191,9 @@ function textTab() {
       toggleCtl('ligatures', 'Ligatures (fi, fl)'),
       toggleCtl('oldStyleNumbers', 'Old-style numerals'),
       select('fontSmoothing', 'Font smoothing (macOS)', [['auto', 'System default'], ['antialiased', 'Thinner (antialiased)'], ['subpixel', 'Subpixel']])),
-    el('p.hint.center', `Previewing: ${s.font === 'publisher' ? 'publisher fonts' : s.font}`),
+    section('Reset', el('div.row-btns', el('button.btn.small', {
+      onclick: () => { resetSettings(['font', 'fontSize', 'fontWeight', 'boldWeight', 'textShadow', 'lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'textAlign', 'wordBreaks', 'headingFont', 'headingScale', 'smallCapsHeadings', 'dropCaps', 'publisherStyles', 'ligatures', 'oldStyleNumbers', 'fontSmoothing']); render(); },
+    }, 'Reset text to defaults'))),
   ];
 }
 
@@ -209,31 +227,6 @@ function fontPicker() {
         disabled: systemFontsLoaded(),
         onclick: async () => { const f = await loadSystemFonts(); toast(f.length ? `Found ${f.length} installed fonts` : 'Could not read installed fonts'); render(); },
       }, icon('search', 14), systemFontsLoaded() ? 'Installed fonts listed' : 'Show installed fonts')));
-}
-
-function spacingTab() {
-  return [
-    section('Lines & letters',
-      range('lineHeight', 'Line spacing', 1, 3, 0.05, (v) => (+v).toFixed(2)),
-      range('letterSpacing', 'Letter spacing', -0.05, 0.25, 0.005, em),
-      range('wordSpacing', 'Word spacing', -0.1, 0.6, 0.01, em)),
-    section('Paragraphs',
-      range('paragraphSpacing', 'Space between paragraphs', 0, 3, 0.05, em),
-      range('paragraphIndent', 'First-line indent', 0, 5, 0.1, em),
-      seg('textAlign', 'Alignment', [['publisher', 'Book'], ['left', 'Left'], ['justify', 'Justify'], ['center', 'Center']]),
-      seg('wordBreaks', 'Split words across lines', [['auto', 'Automatically'], ['book', 'Where the book allows'], ['never', 'Never']]),
-      el('p.hint', { style: { marginTop: '-10px', marginBottom: '16px' } }, getSettings().wordBreaks === 'never'
-        ? 'Words always stay whole on one line. Justified text may space out more.'
-        : getSettings().wordBreaks === 'book' ? 'Only at the break points the book itself marks.' : 'Hyphenates long words (6+ letters) for smoother lines.')),
-    section('Margins & width',
-      range('marginH', 'Side margins', 0, 240, 4, px, 'Shrinks automatically on narrow windows.'),
-      range('marginV', 'Top & bottom margins', 0, 160, 4, px),
-      range('lineLength', 'Line length', 40, 130, 1, (v) => (v >= 130 ? 'No limit' : `${v} characters`), 'About 60–75 characters is easiest to read. Scales with the font size.'),
-      range('columnGap', 'Gap between pages', 0, 160, 4, px)),
-    section('Reset', el('div.row-btns', el('button.btn.small', {
-      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'marginH', 'marginV', 'lineLength', 'columnGap', 'textAlign', 'wordBreaks']); render(); },
-    }, 'Reset spacing to defaults'))),
-  ];
 }
 
 // Page layouts, each drawn as a little window: the desk, the page (or open
@@ -286,10 +279,11 @@ function themeTab() {
     section('Light themes', el('div.theme-grid', light.map(card))),
     section('Dark themes', el('div.theme-grid', dark.map(card))),
     section('Theme colors', themeColorEditor()),
+    section('Highlight colors', highlightPalette()),
     section('Bars & desk',
       colorChoice('barColor', 'Top & bottom bars'),
       colorChoice('barLineColor', 'Line under and over the bars', 'Auto follows the bar color.'),
-      colorChoice('deskColor', 'Desk', 'Shows around the page when you add a desk in Layout.')),
+      colorChoice('deskColor', 'Desk', 'Shows around the page when you add a desk in Page.')),
     section('Paper', paperPicker()),
     section('Atmosphere',
       range('brightness', 'Brightness', 30, 100, 1, pct, 'Dims the page beyond your screen’s minimum.'),
@@ -360,18 +354,23 @@ function colorChoice(key, label, hint) {
 function pageTab() {
   const s = getSettings();
   const paged = s.flow === 'paginated';
+  const spread = paged && s.spread !== 'none';
   return [
     section('Reading mode',
       seg('flow', 'Show the book as', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
       paged ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
       paged && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null),
-    paged && s.spread !== 'none' ? section('Crease', creaseCtls()) : null,
+    section('Margins & line length',
+      range('marginH', 'Side margins', 0, 240, 4, px, 'Shrinks automatically on narrow windows.'),
+      range('marginV', 'Top & bottom margins', 0, 160, 4, px),
+      range('lineLength', 'Line length', 40, 130, 1, (v) => (v >= 130 ? 'No limit' : `${v} characters`), 'About 60–75 characters is easiest to read. Scales with the font size.'),
+      spread ? range('columnGap', 'Gap between pages', 0, 160, 4, px) : null),
     section('Desk',
-      el('p.hint.lead', 'Room around the page, as if the book were lying on a desk.'),
+      el('p.hint.lead', 'Room around the page, as if the book were lying on a desk. Its color is in Colors.'),
       range('deskX', 'Desk at the sides', 0, 25, 0.5, (v) => (v ? `${v}% each` : 'None')),
       range('deskY', 'Desk above and below', 0, 15, 0.5, (v) => (v ? `${v}% each` : 'None')),
-      s.deskX > 0 || s.deskY > 0 ? range('pageRadius', 'Rounded corners', 0, 32, 1, (v) => (v ? `${v}px` : 'Square')) : null,
-      el('p.hint', 'The desk color is in Colors.')),
+      s.deskX > 0 || s.deskY > 0 ? range('pageRadius', 'Rounded corners', 0, 32, 1, (v) => (v ? `${v}px` : 'Square')) : null),
+    spread ? section('Crease', creaseCtls()) : null,
     section('Top & bottom bars',
       toggleCtl('showHeader', 'Show top bar'),
       s.showHeader ? toggleCtl('hideChromeWhileReading', 'Hide buttons while reading', 'The bar and title stay. Move the mouse to the top edge, or click the middle of the page, to bring the buttons back.') : null,
@@ -380,6 +379,9 @@ function pageTab() {
       s.showFooter ? select('footerLeft', 'Bottom left', [['chapter', 'Chapter title'], ['title', 'Book title'], ['clock', 'Clock'], ['none', 'Nothing']]) : null,
       s.showFooter ? select('footerCenter', 'Bottom middle', [['page', 'Page in chapter'], ['chapter-left', 'Time left in chapter'], ['book-left', 'Time left in book'], ['percent', 'Percent'], ['none', 'Nothing']]) : null,
       s.showFooter ? select('footerRight', 'Bottom right', [['percent', 'Percent'], ['book-left', 'Time left in book'], ['chapter-left', 'Time left in chapter'], ['clock', 'Clock'], ['page', 'Page in chapter'], ['none', 'Nothing']]) : null),
+    section('Reset', el('div.row-btns', el('button.btn.small', {
+      onclick: () => { resetSettings(['flow', 'spread', 'marginH', 'marginV', 'lineLength', 'columnGap', 'deskX', 'deskY', 'pageRadius', 'spineShadow', 'creaseDepth', 'creaseWidth', 'showHeader', 'hideChromeWhileReading', 'showFooter', 'showScrubber', 'footerLeft', 'footerCenter', 'footerRight']); render(); },
+    }, 'Reset page to defaults'))),
   ];
 }
 
@@ -391,7 +393,7 @@ function animationSection() {
     range('animationMs', 'Animation speed', 100, 900, 20, (v) => (v < 200 ? 'Quick' : v < 400 ? 'Normal' : v < 650 ? 'Relaxed' : 'Slow')),
     s.pageAnimation === 'curl' ? seg('curlFrom', 'Curl from', [['bottom', 'Bottom corner'], ['middle', 'Straight edge'], ['top', 'Top corner']]) : null,
     s.pageAnimation === 'curl' ? el('p.hint', 'You can also drag the page: press in the margin beside the text and pull toward the spine.') : null,
-    s.flow !== 'paginated' ? el('p.hint', 'Animations apply when the book is shown as pages (Layout).') : null);
+    s.flow !== 'paginated' ? el('p.hint', 'Animations apply when the book is shown as pages (Page tab).') : null);
 }
 
 // ---------- animation previews ----------
@@ -637,15 +639,15 @@ function highlightPalette() {
       ? el('div.row-btns', el('button.btn.small', { onclick: () => { setSettings({ highlightOverrides: {} }, { scope: 'global' }); render(); } }, 'Restore original colors')) : null);
 }
 
-function moreTab() {
+function aidsTab() {
   const s = getSettings();
   const vs = voices();
   return [
-    section('Highlights',
-      highlightPalette(),
+    section('Highlighting',
       select('highlightStyle', 'Default style', HIGHLIGHT_STYLES.map((x) => [x.id, x.name])),
       range('highlightOpacity', 'Highlight strength', 10, 90, 1, pct),
-      toggleCtl('quickHighlight', 'Highlight as soon as I select', 'Hold Alt (Option) while selecting to skip it.')),
+      toggleCtl('quickHighlight', 'Highlight as soon as I select', 'Hold Alt (Option) while selecting to skip it.'),
+      el('p.hint', 'Highlight colors are in Colors.')),
     section('Read aloud',
       el('div.ctl', el('label', 'Voice'), el('select.input', { onchange: (e) => setSettings({ ttsVoice: e.target.value }) },
         el('option', { value: '' }, 'System default'),
@@ -661,11 +663,17 @@ function moreTab() {
       s.fixation ? range('fixationStrength', 'Strength', 0, 100, 1, pct) : null),
     section('Pace',
       range('defaultWpm', 'Starting reading speed', 100, 600, 10, (v) => `${v} wpm`, 'Used for time-left estimates until Margins has measured your own pace.')),
+  ];
+}
+
+function appTab() {
+  return [
     graphicsSection(),
     section('Reset',
+      el('p.hint.lead', 'Your own themes, templates, page layouts and color changes are kept.'),
       el('div.row-btns', el('button.btn.small.danger', {
         onclick: async () => {
-          if (!(await confirmDialog('Reset all reading settings?', 'Your custom themes and templates are kept.', 'Reset', true))) return;
+          if (!(await confirmDialog('Reset all reading settings?', 'Your own themes, templates, page layouts and color changes are kept.', 'Reset', true))) return;
           resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'userTemplates', 'customHighlightColors', 'userLayouts', 'themeOverrides', 'highlightOverrides'].includes(k)));
           render();
         },
@@ -705,7 +713,7 @@ function graphicsSection() {
 function turnStatusCtl() {
   const st = turnStatus();
   const ok = (v) => v === 'working';
-  const line = (label, v) => el('div.status-row', el('span', label), el('span', { class: ok(v) ? 'good' : v === 'not tried' ? '' : 'bad' }, v));
+  const line = (label, v, good = ok(v)) => el('div.status-row', el('span', label), el('span', { class: good ? 'good' : v === 'not tried' ? '' : 'bad' }, v));
   const summary = ok(st.capture) || ok(st.pager)
     ? 'Page turns are drawn from pictures of your pages.'
     : st.capture === 'not tried' && st.pager === 'not tried'
@@ -714,7 +722,7 @@ function turnStatusCtl() {
   return el('div.ctl',
     el('label', 'Page turn check'),
     el('p.hint', summary),
-    el('div.status', line('Screen capture', st.capture), line('Page renderer', st.pager), line('WebGL', st.webgl)));
+    el('div.status', line('Screen capture', st.capture), line('Page renderer', st.pager), line('WebGL', st.webgl, st.webgl !== 'unavailable')));
 }
 
-document.addEventListener('voices-changed', () => { if (tab === 'more') render(); });
+document.addEventListener('voices-changed', () => { if (tab === 'aids') render(); });
