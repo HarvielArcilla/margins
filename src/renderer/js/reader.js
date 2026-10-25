@@ -3,7 +3,7 @@
 // through the hooks below.
 import { $, setChildren, el, debounce, toast, countWords, clamp } from './ui.js';
 import { getSettings, onSettings, attachBook, detachBook } from './settings.js';
-import { findTheme, applyChromeTheme, isDark } from './themes.js';
+import { findTheme, applyChromeTheme, isDark, mix, luminance } from './themes.js';
 import { applyPageCss } from './page-style.js';
 import * as annotations from './annotations.js';
 import * as turner from './pageturn.js';
@@ -108,7 +108,7 @@ function resolveTocSpine() {
 // - side and top margins shrink on small windows instead of eating the page
 // - line length is in characters, so it scales with the font size
 // - in "auto", two pages appear only when each can hold a comfortable line
-// - the text block is centred, and the footer lines up with its edges
+// - the text block is centerd, and the footer lines up with its edges
 export function layoutFor(s, stageEl = $('#stage')) {
   const W = stageEl.W ?? stageEl.clientWidth, H = stageEl.H ?? stageEl.clientHeight;
   const fs = s.fontSize;
@@ -154,7 +154,15 @@ export function applyPageSize(s = getSettings()) {
   rv.style.setProperty('--desk-y', `${Math.round((window.innerHeight * dy) / 100)}px`);
   rv.classList.toggle('has-desk', dx > 0 || dy > 0);
   if (s.deskColor) rv.style.setProperty('--desk', s.deskColor); else rv.style.removeProperty('--desk');
-  if (s.barColor) rv.style.setProperty('--bar', s.barColor); else rv.style.removeProperty('--bar');
+  // A custom bar color brings its own text color and dividing line, worked
+  // out from it so they always read against it (the line can be set too).
+  const set = (k, v) => (v ? rv.style.setProperty(k, v) : rv.style.removeProperty(k));
+  set('--bar', s.barColor || '');
+  rv.classList.toggle('custom-bar', !!s.barColor);
+  const lightBar = s.barColor ? luminance(s.barColor) > 0.42 : null;
+  set('--bar-fg', s.barColor ? (lightBar ? '#1f1d1a' : '#f2efe9') : '');
+  set('--bar-muted', s.barColor ? mix(s.barColor, lightBar ? '#000000' : '#ffffff', 0.55) : '');
+  set('--bar-line', s.barLineColor || (s.barColor ? mix(s.barColor, lightBar ? '#000000' : '#ffffff', 0.14) : ''));
   // rounded outer corners only make sense with a desk to round them against
   const radius = dx > 0 || dy > 0 ? Math.max(0, Math.min(32, s.pageRadius || 0)) : 0;
   rv.style.setProperty('--page-radius', `${radius}px`);
@@ -260,7 +268,7 @@ export async function relayout({ recreate = false } = {}) {
 }
 
 // While the window is being dragged, keep the page still and blank out to
-// the page colour; lay out once when resizing stops.
+// the page color; lay out once when resizing stops.
 const onWindowResize = debounce(async () => {
   await relayout();
   $('#reader-view').classList.remove('resizing');
@@ -382,7 +390,7 @@ const relayoutSoon = debounce(() => relayout(), 220);
 
 // Settings that don't change how a page looks, so the pictures of the pages
 // kept for turning stay good.
-const UNSEEN_KEYS = /^(deskColor|barColor|pageRadius|pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
+const UNSEEN_KEYS = /^(deskColor|barColor|barLineColor|pageRadius|pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
 
 function onSettingsChanged(s, changed) {
   if (!R.open) return;

@@ -224,7 +224,7 @@ function relDay(t) {
 
 function cover(b, cls = 'cover') {
   if (b.cover) return el(`div.${cls.split(' ').join('.')}`, el('img', { src: b.cover, alt: '', loading: 'lazy', draggable: false }));
-  // Generated cover from the title, coloured by a hash of it.
+  // Generated cover from the title, colored by a hash of it.
   let h = 0;
   for (const ch of `${b.title}${b.author}`) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   const hues = ['#7b4b2a', '#2f5d62', '#5c3c6e', '#7a2e3b', '#2e4a7a', '#4b6b33', '#8a5a14', '#3b3b4f'];

@@ -1,13 +1,13 @@
 # Margins
 
-A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bundled reading fonts (or your own), tune spacing down to a hundredth of an em, choose from 28 colour schemes, highlight in ten styles, turn pages with nine animations and any input you like, and see exactly how much you read.
+A deeply customizable ePub reader for **macOS** and **Windows**. Pick from 31 bundled reading fonts (or your own), tune spacing down to a hundredth of an em, choose from 28 color schemes, highlight in ten styles, turn pages with nine animations and any input you like, and see exactly how much you read.
 
 ![Reading with highlights](docs/screenshots/reader.png)
 
 ## Features
 
 **Typography**
-- 31 bundled open-licence fonts — Literata, EB Garamond, Crimson Pro, Source Serif, Lora, Merriweather, Newsreader, Spectral, Vollkorn, Inter, IBM Plex, Atkinson Hyperlegible, Lexend, OpenDyslexic, Andika, JetBrains Mono and more
+- 31 bundled open-license fonts — Literata, EB Garamond, Crimson Pro, Source Serif, Lora, Merriweather, Newsreader, Spectral, Vollkorn, Inter, IBM Plex, Atkinson Hyperlegible, Lexend, OpenDyslexic, Andika, JetBrains Mono and more
 - Add your own `.ttf` / `.otf` / `.woff` / `.woff2` files, or use any font installed on your computer
 - Font size, weight, bold weight, stroke thickening, ligatures, old-style numerals, font smoothing
 - Separate heading font, heading size, small-caps headings, drop caps
@@ -15,21 +15,21 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 
 **Spacing**
 - Line, letter and word spacing; paragraph spacing and first-line indent
-- Alignment (book / left / justify / centre)
+- Alignment (book / left / justify / center)
 - Split words across lines automatically, only where the book allows, or never
 - Line length measured in characters, so it scales with the font size
 - Side and top/bottom margins that shrink gracefully on small windows
 - One page, two pages, or automatic spreads that appear only when each page can hold a full line
 - The page stays put when you resize the window or change settings
 
-**Colour & atmosphere**
-- 28 colour schemes: Paper, Sepia, Cream, Parchment, Mint, Sky, Rose, E-ink, Solarized, Gruvbox, Nord, Dracula, Night, OLED black, Red Night, Terminal, high-contrast and more
+**Color & atmosphere**
+- 28 color schemes: Paper, Sepia, Cream, Parchment, Mint, Sky, Rose, E-ink, Solarized, Gruvbox, Nord, Dracula, Night, OLED black, Red Night, Terminal, high-contrast and more
 - Build and save your own schemes
 - Paper textures under the page — fine grain, cotton, laid, linen, vellum, recycled, newsprint, parchment, cold press, or your own image — with strength and scale; they turn with the page
 - An optional crease down the middle of two-page spreads, like an open book, with adjustable darkness and width
-- Pages don't have to fill the window: put a desk at the sides and above and below, in any colour, with optional rounded page corners (they turn with the page)
-- Spacing presets (Compact, Classic book, Comfortable, Airy, Large print, Easy reading) and your own saved ones
-- Every colour can be changed: themes (edited in place), bars, desk and the highlight palette
+- Pages don't have to fill the window: put a desk at the sides and above and below, in any color, with optional rounded page corners (they turn with the page)
+- Page layouts (Full window, Open book, Paperback, Single page, Roomy, Compact) that set one or two pages, margins, line length, desk, corners and crease — alongside style templates, which set type, color and motion
+- Every color can be changed: any theme's colors (built-in ones can be restored), bars and the line beside them, desk and the highlight palette
 - Search box in Reading settings that finds any setting across every tab
 - Top and bottom bars are separate bands; the crease stays on the pages
 - On Windows, a flicker fix for hardware acceleration (off, standard or strong)
@@ -38,10 +38,10 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Dim or invert images
 
 **Highlights & notes**
-- Nine colours plus any custom colour
-- Ten styles: highlight, marker, underline, squiggle, dotted, dashed, double underline, strikethrough, coloured text, glow
+- Nine colors plus any custom color
+- Ten styles: highlight, marker, underline, squiggle, dotted, dashed, double underline, strikethrough, colored text, glow
 - Notes on any highlight, bookmarks, copy with citation, define (Wiktionary), Wikipedia, speak
-- Filter by colour, style or text; export to Markdown, HTML or JSON; import JSON
+- Filter by color, style or text; export to Markdown, HTML or JSON; import JSON
 
 ![Highlight toolbar](docs/screenshots/highlight-toolbar.png)
 
@@ -79,21 +79,21 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 
 **Library**
 - Import by dialog, drag and drop, or "Open with" from Finder/Explorer
-- Covers (or generated ones), shelves (reading, not started, finished, favourites), tags, search, six sort orders, grid or list, adjustable cover size
+- Covers (or generated ones), shelves (reading, not started, finished, favorites), tags, search, six sort orders, grid or list, adjustable cover size
 - Continue-reading card, book info, edit title/author
 
 **Also**
 - Full-text search, collapsible table of contents with percentages, go to percentage, progress scrubber
 - Read aloud with system voices, word-by-word highlighting, automatic page turning
 - Right-to-left books turn the right way
-- Hardware acceleration is on by default. On Windows a flicker fix (Reading settings → More → Display) handles GPUs that flicker, notably NVIDIA with HDR, and colours are pinned to sRGB for HDR / auto-HDR setups
+- Hardware acceleration is on by default. On Windows a flicker fix (Reading settings → More → Display) handles GPUs that flicker, notably NVIDIA with HDR, and colors are pinned to sRGB for HDR / auto-HDR setups
 - Everything stays on your computer
 
 ## Screenshots
 
 | | |
 |---|---|
-| ![Colour schemes](docs/screenshots/settings-theme.png) | ![Templates](docs/screenshots/settings-templates.png) |
+| ![Color schemes](docs/screenshots/settings-theme.png) | ![Templates](docs/screenshots/settings-templates.png) |
 | ![Page turning controls](docs/screenshots/settings-controls.png) | ![Layout and animations](docs/screenshots/settings-page.png) |
 | ![Night theme](docs/screenshots/night.png) | ![Manuscript template](docs/screenshots/manuscript.png) |
 | ![Notes](docs/screenshots/notes.png) | ![Library](docs/screenshots/library.png) |
@@ -134,7 +134,7 @@ Pushing a tag like `v1.0.0` runs the GitHub Actions workflow, which builds both 
 | T · N · / · B | Contents · notes · search · bookmark |
 | , | Reading settings |
 | + − 0 | Text size |
-| C | Day / night colours |
+| C | Day / night colors |
 | R · X · V | Ruler · fixation emphasis · read aloud |
 | Z · F · M | Focus mode · full screen · show bars |
 | G · I | Go to percent · book info |
@@ -166,7 +166,7 @@ Your library lives in the app's data folder (`~/Library/Application Support/Marg
 ## Credits
 
 - [epub.js](https://github.com/futurepress/epub.js) (BSD-2-Clause)
-- Fonts via [Fontsource](https://fontsource.org), each under the SIL Open Font License; licence files are copied next to the fonts at build time
+- Fonts via [Fontsource](https://fontsource.org), each under the SIL Open Font License; license files are copied next to the fonts at build time
 
 ## License
 

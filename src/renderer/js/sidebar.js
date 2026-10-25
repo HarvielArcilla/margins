@@ -139,7 +139,7 @@ function renderNotes() {
   const refreshList = () => { setChildren(listEl, ...noteCards(filteredNotes())); };
   listEl.append(...noteCards(filteredNotes()));
   if (!A.highlights().length) {
-    return el('div', toolbar, el('p.empty', 'Select text in the book to highlight it. Pick a colour and a style — highlight, underline, squiggle, strikethrough and more — and add notes.'));
+    return el('div', toolbar, el('p.empty', 'Select text in the book to highlight it. Pick a color and a style — highlight, underline, squiggle, strikethrough and more — and add notes.'));
   }
   return el('div', toolbar, chips, listEl);
 

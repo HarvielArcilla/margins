@@ -37,7 +37,7 @@ export const DEFAULTS = {
   dimImages: 0, // 0-60 %
   invertImagesInDark: false,
 
-  // Colours & atmosphere
+  // Colors & atmosphere
   theme: 'paper',
   customThemes: [],
   brightness: 100, // 30-100
@@ -53,7 +53,9 @@ export const DEFAULTS = {
   deskColor: '', // '' = a shade darker than the page
   barColor: '', // top & bottom bars; '' = a shade darker than the page
   pageRadius: 0, // px: rounded outer corners of the page (with a desk)
-  userSpacings: [], // saved spacing presets
+  userLayouts: [], // saved page layouts
+  themeOverrides: {}, // built-in themes whose colors the reader changed: id → { bg, fg, link, accent }
+  barLineColor: '', // the line between the bars and the page; '' = worked out from the bar color
   creaseDepth: 45, // 0-100: how dark the crease between two pages is
   vignette: 0, // 0-100
   autoDarkTheme: '', // theme used when the OS is in dark mode ('' = off)
@@ -103,7 +105,7 @@ export const DEFAULTS = {
   highlightOpacity: 45,
   quickHighlight: false, // highlight immediately on selection
   customHighlightColors: [],
-  highlightOverrides: {}, // built-in highlight colours the reader has changed: id → hex
+  highlightOverrides: {}, // built-in highlight colors the reader has changed: id → hex
 
   // Speech
   ttsVoice: '',
@@ -127,7 +129,7 @@ export const DEFAULTS = {
 
 // Keys that a book may override (everything visual about reading).
 export const BOOK_KEYS = Object.keys(DEFAULTS).filter((k) =>
-  !['customThemes', 'userTemplates', 'customHighlightColors', 'highlightOverrides', 'userSpacings', 'libraryView', 'librarySort', 'libraryCardSize',
+  !['customThemes', 'userTemplates', 'customHighlightColors', 'highlightOverrides', 'userLayouts', 'themeOverrides', 'libraryView', 'librarySort', 'libraryCardSize',
     'dailyGoalMinutes', 'idleSeconds', 'defaultWpm', 'rememberPerBook'].includes(k));
 
 let global = { ...DEFAULTS };

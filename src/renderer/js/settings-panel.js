@@ -3,7 +3,7 @@
 import { $, setChildren, el, icon, iconButton, toast, promptDialog, confirmDialog, debounce, syncRange } from './ui.js';
 import { getSettings, setSettings, setBookScope, bookScopeActive, resetSettings, DEFAULTS } from './settings.js';
 import { allThemes, isDark, highlightColors, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.js';
-import { SPACING_PRESETS, SPACING_KEYS, spacingOf, matchesSpacing } from './spacing.js';
+import { BUILTIN_LAYOUTS, layoutOf, layoutPatch, matchesLayout } from './layouts.js';
 import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
 import { BUILTIN_TEMPLATES, snapshotTemplate, templatePatch } from './templates.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
@@ -24,7 +24,7 @@ export function toggle(which) { if (isOpen() && (!which || which === tab)) close
 const TABS = [
   ['text', 'Text', 'aa'],
   ['spacing', 'Spacing', 'ruler'],
-  ['theme', 'Colours', 'sun'],
+  ['theme', 'Colors', 'sun'],
   ['page', 'Layout', 'layers'],
   ['controls', 'Turning', 'keyboard'],
   ['templates', 'Templates', 'star'],
@@ -171,7 +171,7 @@ function textTab() {
       toggleCtl('smallCapsHeadings', 'Small caps headings'),
       toggleCtl('dropCaps', 'Drop caps', 'A large initial letter at the start of chapters.')),
     section('Details',
-      select('publisherStyles', 'Publisher styles', [['respect', 'Respect — only change colours and size'], ['mix', 'Mix — my fonts and spacing for body text'], ['override', 'Override — force my settings everywhere']]),
+      select('publisherStyles', 'Publisher styles', [['respect', 'Respect — only change colors and size'], ['mix', 'Mix — my fonts and spacing for body text'], ['override', 'Override — force my settings everywhere']]),
       toggleCtl('ligatures', 'Ligatures (fi, fl)'),
       toggleCtl('oldStyleNumbers', 'Old-style numerals'),
       select('fontSmoothing', 'Font smoothing (macOS)', [['auto', 'System default'], ['antialiased', 'Thinner (antialiased)'], ['subpixel', 'Subpixel']])),
@@ -213,7 +213,6 @@ function fontPicker() {
 
 function spacingTab() {
   return [
-    section('Presets', spacingPresets()),
     section('Lines & letters',
       range('lineHeight', 'Line spacing', 1, 3, 0.05, (v) => (+v).toFixed(2)),
       range('letterSpacing', 'Letter spacing', -0.05, 0.25, 0.005, em),
@@ -232,37 +231,42 @@ function spacingTab() {
       range('lineLength', 'Line length', 40, 130, 1, (v) => (v >= 130 ? 'No limit' : `${v} characters`), 'About 60–75 characters is easiest to read. Scales with the font size.'),
       range('columnGap', 'Gap between pages', 0, 160, 4, px)),
     section('Reset', el('div.row-btns', el('button.btn.small', {
-      onclick: () => { resetSettings([...SPACING_KEYS, 'textAlign', 'wordBreaks']); render(); },
+      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'marginH', 'marginV', 'lineLength', 'columnGap', 'textAlign', 'wordBreaks']); render(); },
     }, 'Reset spacing to defaults'))),
   ];
 }
 
-function spacingPresets() {
+// Page layouts, each drawn as a little window: the desk, the page (or open
+// spread) with its corners, margins and crease.
+function layoutCards() {
   const s = getSettings();
   const card = (p) => {
-    const v = p.values;
-    // a little page drawn with the preset's own proportions
-    const lines = el('span.sp-page', { style: { '--lh': v.lineHeight, '--ps': v.paragraphSpacing, '--pad': `${Math.round(v.marginH / 9)}px`, '--ind': `${v.paragraphIndent * 3}px` } },
-      el('span.sp-para', el('i'), el('i'), el('i')), el('span.sp-para', el('i'), el('i')));
-    return el('button.sp-card', {
-      class: `sp-card ${matchesSpacing(s, v) ? 'on' : ''}`, title: p.blurb,
-      onclick: () => { setSettings({ ...v }); render(); },
-    }, lines, el('span.sp-name', p.name), el('span.sp-blurb', p.blurb),
-    p.user ? el('span.theme-x', { title: 'Delete preset', onclick: (e) => { e.stopPropagation(); setSettings({ userSpacings: s.userSpacings.filter((x) => x.id !== p.id) }, { scope: 'global' }); render(); } }, icon('x', 12)) : null);
+    const v = { ...layoutPatch(p) };
+    const two = v.spread !== 'none';
+    const page = () => el('span.lp-page', { style: { '--mx': `${Math.max(2, v.marginH / 10)}px`, '--my': `${Math.max(2, v.marginV / 8)}px` } },
+      el('i'), el('i'), el('i'), el('i'), el('i'));
+    const sheet = el('span.lp-sheet', {
+      class: `lp-sheet ${two && v.spineShadow ? 'crease' : ''}`,
+      style: { '--dx': `${v.deskX}%`, '--dy': `${v.deskY * 1.6}%`, '--r': `${Math.min(8, v.pageRadius / 3)}px`, '--cd': v.creaseDepth / 100 },
+    }, page(), two ? page() : null);
+    return el('button.lp-card', {
+      class: `lp-card ${matchesLayout(s, v) ? 'on' : ''}`, title: p.blurb,
+      onclick: () => { setSettings(layoutPatch(p)); render(); },
+    }, el('span.lp-win', sheet), el('span.sp-name', p.name), el('span.sp-blurb', p.blurb),
+    p.user ? el('span.theme-x', { title: 'Delete layout', onclick: async (e) => { e.stopPropagation(); if (await confirmDialog('Delete page layout?', p.name, 'Delete', true)) { setSettings({ userLayouts: s.userLayouts.filter((x) => x.id !== p.id) }, { scope: 'global' }); render(); } } }, icon('x', 12)) : null);
   };
-  const user = (s.userSpacings || []).map((p) => ({ ...p, user: true, blurb: p.blurb || 'Your preset' }));
-  const custom = ![...SPACING_PRESETS, ...user].some((p) => matchesSpacing(s, p.values));
+  const user = (s.userLayouts || []).map((p) => ({ ...p, user: true, blurb: p.blurb || 'Your layout' }));
   return [
-    el('div.sp-grid', [...SPACING_PRESETS, ...user].map(card)),
+    el('div.sp-grid', [...BUILTIN_LAYOUTS, ...user].map(card)),
     el('div.row-btns',
       el('button.btn.small', {
         onclick: async () => {
-          const name = await promptDialog('Save spacing preset', 'Name', 'My spacing');
+          const name = await promptDialog('Save this page layout', 'Name', 'My layout');
           if (!name) return;
-          setSettings({ userSpacings: [...(s.userSpacings || []), { id: `sp-${Date.now().toString(36)}`, name, values: spacingOf(getSettings()) }] }, { scope: 'global' });
+          setSettings({ userLayouts: [...(s.userLayouts || []), { id: `lay-${Date.now().toString(36)}`, name, values: layoutOf(getSettings()) }] }, { scope: 'global' });
           render();
         },
-      }, icon('plus', 14), custom ? 'Save my spacing as a preset' : 'Save as a new preset')),
+      }, icon('plus', 14), 'Save current layout')),
   ];
 }
 
@@ -276,18 +280,22 @@ function themeTab() {
     title: t.name,
     onclick: () => { setSettings({ theme: t.id }); render(); },
   }, el('span.theme-aa', 'Aa'), el('span.theme-name', t.name),
+  t.edited ? el('span.theme-dot', { title: 'Colors changed' }) : null,
   t.custom ? el('span.theme-x', { title: 'Delete theme', onclick: (e) => { e.stopPropagation(); setSettings({ customThemes: s.customThemes.filter((x) => x.id !== t.id), theme: s.theme === t.id ? 'paper' : s.theme }); render(); } }, icon('x', 12)) : null);
   return [
     section('Light themes', el('div.theme-grid', light.map(card))),
     section('Dark themes', el('div.theme-grid', dark.map(card))),
-    section(findThemeCustom(s) ? 'Edit this theme' : 'Make your own', customThemeEditor()),
-    section('Bars & desk', colorChoice('barColor', 'Top & bottom bars'), colorChoice('deskColor', 'Desk', 'Shows around the page when you add a desk in Layout.')),
+    section('Theme colors', themeColorEditor()),
+    section('Bars & desk',
+      colorChoice('barColor', 'Top & bottom bars'),
+      colorChoice('barLineColor', 'Line under and over the bars', 'Auto follows the bar color.'),
+      colorChoice('deskColor', 'Desk', 'Shows around the page when you add a desk in Layout.')),
     section('Paper', paperPicker()),
     section('Atmosphere',
       range('brightness', 'Brightness', 30, 100, 1, pct, 'Dims the page beyond your screen’s minimum.'),
       range('warmth', 'Warmth (night light)', 0, 100, 1, pct),
       range('vignette', 'Vignette', 0, 100, 1, pct),
-      toggleCtl('keepPublisherColors', 'Keep the book’s own text colours'),
+      toggleCtl('keepPublisherColors', 'Keep the book’s own text colors'),
       select('autoDarkTheme', 'When the system is in dark mode use', [['', 'Same theme (off)'], ...dark.map((t) => [t.id, t.name])])),
     section('Images',
       range('dimImages', 'Dim images', 0, 60, 1, pct),
@@ -296,40 +304,42 @@ function themeTab() {
   ];
 }
 
-const findThemeCustom = (s) => allThemes(s).find((t) => t.id === s.theme && t.custom);
-
-// Colours of a theme: a custom theme is edited in place; a built-in one is
-// the starting point for a new theme.
-function customThemeEditor() {
+// The colors of the current theme, edited in place: a built-in theme keeps
+// its original to restore; any theme can be saved as a new one.
+function themeColorEditor() {
   const s = getSettings();
   const base = allThemes(s).find((t) => t.id === s.theme) || allThemes(s)[0];
-  const editing = !!base.custom;
   const draft = { bg: base.bg, fg: base.fg, link: base.link, accent: base.accent || base.link };
   const preview = el('div.theme-preview', el('strong', 'The quick brown fox'), ' jumps over the ', el('a', 'lazy dog'), '.');
   const paint = () => { Object.assign(preview.style, { background: draft.bg, color: draft.fg }); preview.querySelector('a').style.color = draft.link; };
   paint();
   const save = debounce(() => {
-    const list = getSettings().customThemes.map((t) => (t.id === base.id ? { ...t, ...draft } : t));
-    setSettings({ customThemes: list }, { scope: 'global' });
+    const g = getSettings();
+    if (base.custom) setSettings({ customThemes: g.customThemes.map((t) => (t.id === base.id ? { ...t, ...draft } : t)) }, { scope: 'global' });
+    else setSettings({ themeOverrides: { ...g.themeOverrides, [base.id]: { ...draft } } }, { scope: 'global' });
   }, 120);
-  const picker = (k, label) => el('label.color-field', el('input', { type: 'color', value: draft[k], oninput: (e) => { draft[k] = e.target.value; paint(); if (editing) save(); } }), label);
+  const picker = (k, label) => el('label.color-field', el('input', { type: 'color', value: draft[k], oninput: (e) => { draft[k] = e.target.value; paint(); save(); }, onchange: () => render() }), label);
   return el('div',
+    el('p.hint.lead', `Editing ${base.name}. Changes apply as you pick.`),
     preview,
     el('div.color-fields', picker('bg', 'Page'), picker('fg', 'Text'), picker('link', 'Links'), picker('accent', 'Accent')),
-    editing ? el('p.hint', 'Changes apply as you pick. Choose a built-in theme to start another.') : null,
-    el('div.row-btns', el('button.btn.small', {
-      onclick: async () => {
-        const name = await promptDialog('Save colour scheme', 'Name', editing ? `${base.name} copy` : 'My theme');
-        if (!name) return;
-        const t = { id: `custom-${Date.now().toString(36)}`, name, ...draft };
-        setSettings({ customThemes: [...getSettings().customThemes, t], theme: t.id }, { scope: 'global' });
-        setSettings({ theme: t.id });
-        render();
-      },
-    }, icon('plus', 14), editing ? 'Save as a copy' : 'Save as new theme')));
+    el('div.row-btns',
+      el('button.btn.small', {
+        onclick: async () => {
+          const name = await promptDialog('Save as a new theme', 'Name', `${base.name} copy`);
+          if (!name) return;
+          const t = { id: `custom-${Date.now().toString(36)}`, name, ...draft };
+          setSettings({ customThemes: [...getSettings().customThemes, t], theme: t.id }, { scope: 'global' });
+          setSettings({ theme: t.id });
+          render();
+        },
+      }, icon('plus', 14), 'Save as new theme'),
+      base.edited ? el('button.btn.small', {
+        onclick: () => { const o = { ...getSettings().themeOverrides }; delete o[base.id]; setSettings({ themeOverrides: o }, { scope: 'global' }); render(); },
+      }, 'Restore original colors') : null));
 }
 
-// Auto (worked out from the page colour), a few presets, or any colour.
+// Auto (worked out from the page color), a few presets, or any color.
 function colorChoice(key, label, hint) {
   const s = getSettings();
   const presets = ['#e4ded3', '#c9c2b6', '#8a8174', '#5b5b5f', '#2b2b2e', '#2f3a33', '#33384a'];
@@ -340,9 +350,9 @@ function colorChoice(key, label, hint) {
   return el('div.ctl',
     el('label', label),
     el('div.desk-row',
-      el('button.desk-swatch.auto', { class: `desk-swatch auto ${!s[key] ? 'on' : ''}`, title: 'A shade darker than the page', onclick: () => { setSettings({ [key]: '' }); render(); } }, 'Auto'),
+      el('button.desk-swatch.auto', { class: `desk-swatch auto ${!s[key] ? 'on' : ''}`, title: 'Worked out from the theme', onclick: () => { setSettings({ [key]: '' }); render(); } }, 'Auto'),
       presets.map(swatch),
-      el('label.desk-swatch.custom', { title: 'Any colour', class: `desk-swatch custom ${s[key] && !presets.includes(s[key]) ? 'on' : ''}`, style: { '--c': s[key] || '#888888' } },
+      el('label.desk-swatch.custom', { title: 'Any color', class: `desk-swatch custom ${s[key] && !presets.includes(s[key]) ? 'on' : ''}`, style: { '--c': s[key] || '#888888' } },
         el('input', { type: 'color', value: s[key] || '#888888', oninput: (e) => setSettings({ [key]: e.target.value }), onchange: () => render() }))),
     hint ? el('p.hint', hint) : null);
 }
@@ -361,7 +371,7 @@ function pageTab() {
       range('deskX', 'Desk at the sides', 0, 25, 0.5, (v) => (v ? `${v}% each` : 'None')),
       range('deskY', 'Desk above and below', 0, 15, 0.5, (v) => (v ? `${v}% each` : 'None')),
       s.deskX > 0 || s.deskY > 0 ? range('pageRadius', 'Rounded corners', 0, 32, 1, (v) => (v ? `${v}px` : 'Square')) : null,
-      el('p.hint', 'The desk colour is in Colours.')),
+      el('p.hint', 'The desk color is in Colors.')),
     section('Top & bottom bars',
       toggleCtl('showHeader', 'Show top bar'),
       s.showHeader ? toggleCtl('hideChromeWhileReading', 'Hide buttons while reading', 'The bar and title stay. Move the mouse to the top edge, or click the middle of the page, to bring the buttons back.') : null,
@@ -593,7 +603,7 @@ function templatesTab() {
         t.user ? el('button.link-btn.danger', { onclick: async (e) => { e.stopPropagation(); if (await confirmDialog('Delete template?', t.name, 'Delete', true)) { setSettings({ userTemplates: s.userTemplates.filter((x) => x.id !== t.id) }, { scope: 'global' }); render(); } } }, 'Delete') : null));
   };
   return [
-    section('Your templates',
+    section('Your style templates',
       el('button.btn.small', {
         onclick: async () => {
           const name = await promptDialog('Save current look as a template', 'Name', 'My reading setup');
@@ -601,9 +611,10 @@ function templatesTab() {
           setSettings({ userTemplates: [...s.userTemplates, snapshotTemplate(getSettings(), name)] }, { scope: 'global' });
           render();
         },
-      }, icon('plus', 14), 'Save current settings as template'),
-      s.userTemplates.length ? el('div.tpl-grid', s.userTemplates.map(card)) : el('p.hint', 'Templates capture fonts, spacing, colours, layout and page turning.')),
-    section('Built in', el('div.tpl-grid', BUILTIN_TEMPLATES.map(card))),
+      }, icon('plus', 14), 'Save current style as a template'),
+      s.userTemplates.length ? el('div.tpl-grid', s.userTemplates.map(card)) : el('p.hint', 'Style templates capture fonts, text spacing, colors, atmosphere and page turning — not the page layout.')),
+    section('Built-in style templates', el('div.tpl-grid', BUILTIN_TEMPLATES.map(card))),
+    section('Page layouts', el('p.hint.lead', 'One or two pages, margins, line length, desk, corners and crease.'), layoutCards()),
   ];
 }
 
@@ -619,11 +630,11 @@ function highlightPalette() {
       onclick: () => { setSettings({ highlightColor: c.id }, { scope: 'global' }); render(); },
     });
   return el('div.ctl',
-    el('div.ctl-top', el('label', editingPalette ? 'Click a colour to change it' : 'Default colour'),
-      el('button.link-btn', { onclick: () => { editingPalette = !editingPalette; render(); } }, editingPalette ? 'Done' : 'Edit colours')),
+    el('div.ctl-top', el('label', editingPalette ? 'Click a color to change it' : 'Default color'),
+      el('button.link-btn', { onclick: () => { editingPalette = !editingPalette; render(); } }, editingPalette ? 'Done' : 'Edit colors')),
     el('div.pop-colors', colors.map(sw)),
     editingPalette && Object.keys(s.highlightOverrides || {}).length
-      ? el('div.row-btns', el('button.btn.small', { onclick: () => { setSettings({ highlightOverrides: {} }, { scope: 'global' }); render(); } }, 'Restore original colours')) : null);
+      ? el('div.row-btns', el('button.btn.small', { onclick: () => { setSettings({ highlightOverrides: {} }, { scope: 'global' }); render(); } }, 'Restore original colors')) : null);
 }
 
 function moreTab() {
@@ -646,7 +657,7 @@ function moreTab() {
       s.ruler !== 'off' ? range('rulerLines', 'Ruler height', 1, 8, 1, (v) => `${v} line${v > 1 ? 's' : ''}`) : null,
       s.ruler !== 'off' ? range('rulerOpacity', 'Ruler strength', 5, 90, 1, pct) : null),
     section('Fixation emphasis',
-      toggleCtl('fixation', 'Emphasise word beginnings', 'Bionic-style: the end of each word is dimmed so your eyes land on its start.'),
+      toggleCtl('fixation', 'Emphasize word beginnings', 'Bionic-style: the end of each word is dimmed so your eyes land on its start.'),
       s.fixation ? range('fixationStrength', 'Strength', 0, 100, 1, pct) : null),
     section('Pace',
       range('defaultWpm', 'Starting reading speed', 100, 600, 10, (v) => `${v} wpm`, 'Used for time-left estimates until Margins has measured your own pace.')),
@@ -655,7 +666,7 @@ function moreTab() {
       el('div.row-btns', el('button.btn.small.danger', {
         onclick: async () => {
           if (!(await confirmDialog('Reset all reading settings?', 'Your custom themes and templates are kept.', 'Reset', true))) return;
-          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'userTemplates', 'customHighlightColors', 'userSpacings'].includes(k)));
+          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'userTemplates', 'customHighlightColors', 'userLayouts', 'themeOverrides', 'highlightOverrides'].includes(k)));
           render();
         },
       }, 'Reset everything to defaults'))),
@@ -685,7 +696,7 @@ function graphicsSection() {
         onclick: async () => { gfx = await window.api.graphics.set({ flickerFix: v }); render(); },
       }, l))),
       el('p.hint', 'For flicker with hardware acceleration on (common with NVIDIA). Standard changes how frames reach Windows and keeps the GPU drawing; Strong is for flicker that remains, at some cost to smoothness.')) : null,
-    sw('srgb', 'Standard colours (sRGB)', 'Keeps colours steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
+    sw('srgb', 'Standard colors (sRGB)', 'Keeps colors steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
     changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null,
     turnStatusCtl());
 }

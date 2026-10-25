@@ -30,8 +30,8 @@ if (!graphics.hardwareAcceleration) app.disableHardwareAcceleration();
 // when there is no GPU, or when the GPU is on Chromium's blocklist. It only
 // ever draws the app's own pages.
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-// Pin colours to sRGB. With Windows HDR / NVIDIA RTX auto-HDR on, Chromium
-// otherwise re-tonemaps every frame, which shows up as washed-out colours and
+// Pin colors to sRGB. With Windows HDR / NVIDIA RTX auto-HDR on, Chromium
+// otherwise re-tonemaps every frame, which shows up as washed-out colors and
 // flickering when layers change.
 if (graphics.srgb) app.commandLine.appendSwitch('force-color-profile', 'srgb');
 // Flicker with the GPU on (Windows, notably NVIDIA): Chromium hands its frames

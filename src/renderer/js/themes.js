@@ -1,4 +1,4 @@
-// Colour schemes. Each one colours both the page and the app chrome around it.
+// Color schemes. Each one colors both the page and the app chrome around it.
 
 export const THEMES = [
   { id: 'paper', name: 'Paper', bg: '#fbf9f4', fg: '#26231e', link: '#3b6ea8', accent: '#b5562b' },
@@ -32,11 +32,15 @@ export const THEMES = [
 ];
 
 export function allThemes(settings) {
-  return [...THEMES, ...(settings.customThemes || []).map((t) => ({ ...t, custom: true }))];
+  // built-in themes can have their colors changed; the originals stay
+  // available to restore
+  const o = settings.themeOverrides || {};
+  const builtIn = THEMES.map((t) => (o[t.id] ? { ...t, ...o[t.id], edited: true, original: t } : t));
+  return [...builtIn, ...(settings.customThemes || []).map((t) => ({ ...t, custom: true }))];
 }
 
 export function findTheme(settings) {
-  return allThemes(settings).find((t) => t.id === settings.theme) || THEMES[0];
+  return allThemes(settings).find((t) => t.id === settings.theme) || allThemes(settings)[0];
 }
 
 export function hexToRgb(hex) {
@@ -102,7 +106,7 @@ export const HIGHLIGHT_COLORS = [
   { id: 'gray', name: 'Gray', hex: '#a9a9a9' },
 ];
 
-// The highlight palette with any colours the reader has changed.
+// The highlight palette with any colors the reader has changed.
 export function highlightColors(s) {
   const o = s?.highlightOverrides || {};
   return HIGHLIGHT_COLORS.map((c) => (o[c.id] ? { ...c, hex: o[c.id] } : c));

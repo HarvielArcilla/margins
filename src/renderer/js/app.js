@@ -135,7 +135,7 @@ function goToDialog() {
 const SHORTCUTS = [
   ['Turning pages', [['→  Space  PgDn  J  L', 'Next page'], ['←  Shift+Space  PgUp  K  H', 'Previous page'], ['P', 'Start/stop auto-turn or auto-scroll'], ['[  ]', 'Slower / faster auto'], ['G', 'Go to a percentage']]],
   ['Panels', [['T', 'Contents'], ['N', 'Highlights & notes'], ['/  Ctrl+F', 'Search the book'], ['B', 'Bookmark this page'], [',  Ctrl+,', 'Reading settings'], ['I', 'Book info'], ['Esc', 'Close panels']]],
-  ['Reading', [['+  −  0', 'Bigger / smaller / reset text'], ['C', 'Switch day / night colours'], ['R', 'Cycle reading ruler'], ['X', 'Fixation emphasis'], ['V', 'Read aloud'], ['Z', 'Focus mode'], ['F', 'Full screen'], ['M', 'Show/hide bars'], ['Alt+1…9', 'Apply a template']]],
+  ['Reading', [['+  −  0', 'Bigger / smaller / reset text'], ['C', 'Switch day / night colors'], ['R', 'Cycle reading ruler'], ['X', 'Fixation emphasis'], ['V', 'Read aloud'], ['Z', 'Focus mode'], ['F', 'Full screen'], ['M', 'Show/hide bars'], ['Alt+1…9', 'Apply a template']]],
   ['App', [['Ctrl+O', 'Import books'], ['Ctrl+L', 'Library'], ['Ctrl+Shift+S', 'Reading stats'], ['Ctrl+E', 'Export highlights'], ['?', 'This list']]],
 ];
 

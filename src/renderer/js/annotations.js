@@ -227,7 +227,7 @@ function showPopup(ctx, at) {
       class: `swatch ${existing && existing.color === c.id ? 'on' : ''}`,
       onclick: () => { setSettings({ highlightColor: c.id }, { scope: 'global' }); apply({ color: c.id, style: existing ? existing.style : selStyle }); },
     })),
-  el('label.swatch.custom', { title: 'Custom colour' },
+  el('label.swatch.custom', { title: 'Custom color' },
     el('input', {
       type: 'color', value: colorHex(selColor),
       onchange: (e) => {

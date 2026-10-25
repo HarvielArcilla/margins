@@ -1,12 +1,14 @@
-// Templates: named bundles of typography, layout, colour and page-turn
-// settings that can be applied in one click. Users can save their own.
+// Style templates: named bundles of typography, color, atmosphere and
+// page-turn settings that can be applied in one click. They leave the page
+// layout (margins, one or two pages, desk, crease) to page layouts
+// (layouts.js). Users can save their own.
 import { DEFAULTS } from './settings.js';
 
 export const TEMPLATE_KEYS = [
   'font', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing',
   'paragraphIndent', 'textAlign', 'wordBreaks', 'publisherStyles', 'headingFont', 'headingScale', 'dropCaps',
-  'smallCapsHeadings', 'textShadow', 'flow', 'spread', 'marginH', 'marginV', 'lineLength', 'columnGap',
-  'theme', 'brightness', 'warmth', 'paperTexture', 'paperType', 'spineShadow', 'creaseDepth', 'creaseWidth', 'vignette', 'pageAnimation', 'animationMs', 'curlFrom', 'ruler',
+  'smallCapsHeadings', 'textShadow',
+  'theme', 'brightness', 'warmth', 'paperTexture', 'paperType', 'vignette', 'pageAnimation', 'animationMs', 'curlFrom', 'ruler',
   'rulerLines', 'fixation', 'fixationStrength', 'dimImages',
 ];
 
@@ -97,5 +99,7 @@ export function snapshotTemplate(settings, name) {
 // Settings to apply for a template: anything it doesn't mention goes back to
 // the default, so templates don't inherit leftovers from the previous one.
 export function templatePatch(t) {
-  return { ...Object.fromEntries(TEMPLATE_KEYS.map((k) => [k, DEFAULTS[k]])), ...t.settings };
+  // only style keys: older saved templates also carried layout settings
+  const own = Object.fromEntries(Object.entries(t.settings).filter(([k]) => TEMPLATE_KEYS.includes(k)));
+  return { ...Object.fromEntries(TEMPLATE_KEYS.map((k) => [k, DEFAULTS[k]])), ...own };
 }

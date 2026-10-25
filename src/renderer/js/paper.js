@@ -4,7 +4,7 @@
 // Textures are generated, not shipped: each is a seamless tile drawn once
 // per paper type and light/dark theme and cached. They carry their own
 // transparency (dark fibres and light flecks), so they work on any page
-// colour without blend modes, which keeps them cheap to draw.
+// color without blend modes, which keeps them cheap to draw.
 import { $ } from './ui.js';
 
 export const PAPERS = [

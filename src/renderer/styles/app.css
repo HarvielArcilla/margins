@@ -1,5 +1,5 @@
 /* Margins — app chrome.
-   Colours come from the active reading theme (CSS variables set by
+   Colors come from the active reading theme (CSS variables set by
    themes.js), so the window always matches the page.
 
    Rendering notes (Windows / NVIDIA in particular): nothing here uses
@@ -258,14 +258,16 @@ body.dropping #drop-hint { display: grid; }
   background: var(--bar, color-mix(in srgb, var(--bg) 92%, var(--fg)));
   /* kept inside the bar: nothing may spill onto the page below, which is
      pictured for page turns without it */
-  box-shadow: inset 0 -1px 0 var(--border);
+  box-shadow: inset 0 -1px 0 var(--bar-line, var(--border));
 }
 :root[data-dark="1"] #reader-topbar, :root[data-dark="1"] #reader-footer { background: var(--bar, color-mix(in srgb, var(--bg) 82%, #000)); }
-#reader-footer { box-shadow: inset 0 1px 0 var(--border); }
+#reader-footer { box-shadow: inset 0 1px 0 var(--bar-line, var(--border)); }
+/* a custom bar color brings its own text colors (set from it in reader.js) */
+#reader-view.custom-bar #reader-topbar, #reader-view.custom-bar #reader-footer { --fg: var(--bar-fg); --muted: var(--bar-muted); --faint: var(--bar-muted); --hover: color-mix(in srgb, var(--bar-fg) 10%, transparent); color: var(--fg); }
 .tb-group { display: flex; align-items: center; gap: 1px; flex: none; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; }
 .tb-center { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 0 12px; }
-/* In the reader the title is centred on the window itself, whatever the
+/* In the reader the title is centerd on the window itself, whatever the
    buttons either side add up to (they differ, and so do the window controls
    on each platform). */
 #reader-topbar .tb-center { position: absolute; inset: 0; align-items: center; pointer-events: none; padding: 0; }
@@ -300,7 +302,7 @@ body.focus-mode #stage { top: calc(10px + var(--desk-y, 0px)); bottom: calc(10px
 #book { position: absolute; }
 #book .epub-container { margin: 0 auto; }
 body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #book .epub-container { overflow-x: hidden !important; }
-/* The book pages always declare a light colour scheme and so does their
+/* The book pages always declare a light color scheme and so does their
    frame, so Chromium never paints an opaque backdrop behind a page while it
    loads (the white/black flash between chapters). */
 #book iframe { background: transparent; color-scheme: light; }
@@ -345,7 +347,7 @@ body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #
 #reader-topbar .tb-group { transition: opacity .2s ease; }
 #reader-view.immersive:not(.show-chrome):not(.peek-top) #reader-topbar .tb-group { opacity: 0; pointer-events: none; }
 #reader-view.immersive:not(.show-chrome):not(.peek-bottom) .scrub { opacity: .6; }
-#reader-view.show-chrome #reader-topbar, #reader-view.peek-top #reader-topbar { box-shadow: inset 0 -1px 0 var(--border); }
+#reader-view.show-chrome #reader-topbar, #reader-view.peek-top #reader-topbar { box-shadow: inset 0 -1px 0 var(--bar-line, var(--border)); }
 body.sidebar-open #reader-topbar, body.settings-open #reader-topbar,
 body.sidebar-open #reader-topbar .tb-group, body.settings-open #reader-topbar .tb-group { opacity: 1 !important; pointer-events: auto !important; }
 #reader-view.no-header #reader-topbar:not(:hover) { opacity: 0; }
@@ -726,7 +728,7 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 .status-row .good { color: #3f9a5b; }
 .status-row .bad { color: #c8553d; }
 
-/* desk colour picker (Settings → Pages → Page size) */
+/* desk color picker (Settings → Pages → Page size) */
 .desk-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
 .desk-swatch { width: 25px; height: 25px; border-radius: 8px; border: 1px solid var(--border); background: var(--c); padding: 0; cursor: pointer; position: relative; }
 .desk-swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -743,19 +745,22 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 .ctl-top .link-btn { color: var(--accent); }
 .ctl-top .link-btn:hover { text-decoration: underline; }
 
-/* editable highlight colours */
+/* editable highlight colors */
 .swatch.edit { position: relative; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in srgb, var(--fg) 30%, transparent); }
 .swatch.edit input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 
-/* spacing presets: little pages drawn with each preset's proportions */
 .sp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
-.sp-card { position: relative; display: grid; gap: 2px; justify-items: start; text-align: left; padding: 8px 8px 9px; border-radius: 11px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); transition: border-color .15s, box-shadow .15s; }
-.sp-card:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
-.sp-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.sp-page { display: grid; align-content: start; gap: calc(var(--ps) * 5px + 1px); width: 100%; height: 50px; padding: 6px var(--pad); margin-bottom: 4px; border-radius: 6px; background: var(--panel); overflow: hidden; }
-.sp-para { display: grid; gap: calc((var(--lh) - 1) * 7px + 1px); }
-.sp-para i { display: block; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fg) 45%, transparent); }
-.sp-para i:first-child { margin-left: var(--ind); }
-.sp-para i:last-child { width: 60%; }
 .sp-name { font-size: 12px; font-weight: 600; }
 .sp-blurb { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+
+/* page layout cards (Templates): a tiny window with the desk, the page and its crease */
+.lp-card { position: relative; display: grid; gap: 2px; justify-items: start; text-align: left; padding: 8px 8px 9px; border-radius: 11px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); transition: border-color .15s, box-shadow .15s; }
+.lp-card:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.lp-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.lp-win { position: relative; display: block; width: 100%; aspect-ratio: 16 / 10; margin-bottom: 5px; border-radius: 5px; background: color-mix(in srgb, var(--bg) 82%, var(--fg)); overflow: hidden; }
+.lp-sheet { position: absolute; left: var(--dx); right: var(--dx); top: var(--dy); bottom: var(--dy); display: flex; background: var(--bg); border-radius: var(--r); box-shadow: 0 1px 3px rgba(0,0,0,.15); overflow: hidden; }
+.lp-sheet.crease::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 10px; margin-left: -5px; background: linear-gradient(90deg, transparent, rgba(0,0,0,calc(var(--cd) * .35)), transparent); }
+.lp-page { flex: 1; display: grid; align-content: start; gap: 3px; padding: var(--my) var(--mx); }
+.lp-page i { display: block; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fg) 40%, transparent); }
+.lp-page i:last-child { width: 55%; }
+.theme-dot { position: absolute; top: 5px; left: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }

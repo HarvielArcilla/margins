@@ -1,4 +1,4 @@
-// Fonts: the bundled catalogue, fonts the user adds, and fonts installed on
+// Fonts: the bundled catalog, fonts the user adds, and fonts installed on
 // the system. Also builds the @font-face CSS injected into each book page.
 
 let bundled = [];
