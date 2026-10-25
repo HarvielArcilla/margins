@@ -200,8 +200,9 @@ async function capture() {
   let raw;
   try { raw = await window.api.window.captureRaw({ x: r.left, y: r.top, width: r.W, height: r.H }); } catch (e) { raw = { error: String(e) }; }
   const shot = await toBitmap(raw, r.W, r.H);
-  if (shot) { captureFailures = 0; return shot; }
+  if (shot) { captureFailures = 0; pictureStatus.capture = 'working'; return shot; }
   captureFailures++;
+  pictureStatus.capture = `failed: ${raw?.error || `unexpected size ${raw?.width}×${raw?.height}`}`;
   console.warn('window capture failed:', raw?.error || 'bad size', raw?.width, raw?.height, raw?.data?.length);
   return null;
 }
@@ -215,17 +216,24 @@ function pagerSpec(which, cfi) {
     L: R.layout,
     stage: stageRect(),
     win: { W: window.innerWidth, H: window.innerHeight },
+    dpr: window.devicePixelRatio || 1,
     items: allAnnotations(),
   };
 }
 
 async function renderWithPager(which, cfi) {
   if (!R.open || !cfi || !R.layout || getSettings().flow !== 'paginated') return null;
+  if (window.__noPager) { pictureStatus.pager = 'failed: switched off for testing'; return null; }
   const spec = pagerSpec(which, cfi);
   let raw;
   try { raw = await window.api.pager.render(spec); } catch (e) { raw = { ok: false, error: String(e) }; }
-  if (!raw?.ok) { if (raw?.error) console.warn('pager:', raw.error); return null; }
+  if (!raw?.ok) {
+    if (raw?.error) console.warn('pager:', raw.error);
+    pictureStatus.pager = `failed: ${raw?.error || 'no reply'}`;
+    return null;
+  }
   const shot = await toBitmap(raw, spec.stage.W, spec.stage.H);
+  pictureStatus.pager = shot ? 'working' : `failed: unexpected size ${raw.width}×${raw.height}`;
   return shot && { ...shot, cfi: raw.cfi };
 }
 
@@ -433,17 +441,48 @@ function whenArrives(ctx, use) {
 // Without any pictures: move the live book itself out, turn, and in again.
 async function liveTurn(kind, sign, ms, go) {
   const viewer = $('#viewer');
-  const half = Math.max(110, ms * 0.6);
-  const out = kind === 'fade' || kind === 'zoom' ? [{ opacity: 1 }, { opacity: 0 }]
-    : [{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-sign * 3}%)`, opacity: 0 }];
-  const inn = kind === 'fade' || kind === 'zoom' ? [{ opacity: 0 }, { opacity: 1 }]
-    : [{ transform: `translateX(${sign * 3}%)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }];
-  const a = viewer.animate(out, { duration: half, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
+  const half = Math.max(140, ms * 0.7);
+  const t = (x) => ({ transform: x });
+  // Each animation keeps its own character in two halves: the old page
+  // leaves, the book moves, the new page arrives.
+  const plans = {
+    fade: [[{ opacity: 1 }, { opacity: 0 }], [{ opacity: 0 }, { opacity: 1 }]],
+    slide: [[{ transform: 'translateX(0)', opacity: 1 }, { transform: `translateX(${-sign * 4}%)`, opacity: 0 }],
+      [{ transform: `translateX(${sign * 4}%)`, opacity: 0 }, { transform: 'translateX(0)', opacity: 1 }]],
+    push: [[t('translateX(0)'), t(`translateX(${-sign * 100}%)`)], [t(`translateX(${sign * 100}%)`), t('translateX(0)')]],
+    cover: [[t('translateX(0)'), t(`translateX(${-sign * 102}%)`)], [{ opacity: 0 }, { opacity: 1 }]],
+    zoom: [[{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(1.06)', opacity: 0 }], [{ transform: 'scale(.97)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }]],
+    rise: [[{ transform: 'translateY(0)', opacity: 1 }, { transform: `translateY(${-sign * 4}%)`, opacity: 0 }],
+      [{ transform: `translateY(${sign * 4}%)`, opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }]],
+    // curl and flip: the page swings away about its edge and the next swings in
+    flip: [[t('perspective(1600px) rotateY(0deg)'), t(`perspective(1600px) rotateY(${sign * 90}deg)`)],
+      [t(`perspective(1600px) rotateY(${-sign * 90}deg)`), t('perspective(1600px) rotateY(0deg)')]],
+  };
+  const plan = plans[kind === 'curl' ? 'flip' : kind] || plans.slide;
+  const swing = kind === 'curl' || kind === 'flip';
+  viewer.style.transformOrigin = swing ? (sign > 0 ? 'left center' : 'right center') : '';
+  const a = viewer.animate(plan[0], { duration: half, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' });
   await a.finished.catch(() => {});
   await go();
-  await settled();
+  await liveReady(here());
   a.cancel();
-  await viewer.animate(inn, { duration: half, easing: 'cubic-bezier(.25,.8,.25,1)' }).finished.catch(() => {});
+  if (swing) viewer.style.transformOrigin = sign > 0 ? 'right center' : 'left center';
+  await viewer.animate(plan[1], { duration: half, easing: 'cubic-bezier(.25,.8,.25,1)' }).finished.catch(() => {});
+  viewer.style.transformOrigin = '';
+}
+
+// What page turns are working from, for Settings and for reports.
+export const pictureStatus = { capture: 'not tried', pager: 'not tried', webgl: null };
+export function turnStatus() {
+  let webgl = 'unavailable';
+  try {
+    const e = curlEngine();
+    if (e.ok) {
+      const ext = e.gl.getExtension('WEBGL_debug_renderer_info');
+      webgl = ext ? e.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'available';
+    }
+  } catch { /* none */ }
+  return { ...pictureStatus, webgl };
 }
 
 // ---------- leaf turns (WebGL) ----------
@@ -488,10 +527,20 @@ function fadeStill(setup, a) {
   if (setup.still && !setup.back && !setup.reverse && snapEl) snapEl.style.opacity = a < 1 ? String(a) : '';
 }
 
+// Which corner leads the curl (Settings → Pages): the fold line's tilt.
+function curlAngle() {
+  const from = getSettings().curlFrom;
+  return from === 'top' ? -0.26 : from === 'middle' ? 0 : 0.26;
+}
+
+// Shadows grow in as the page lifts and fade away as it lands, so nothing
+// is left to vanish at once when the turn ends. x: progress, 0..1.
+const shadowFor = (x) => smooth(0, 0.08, x) * (1 - smooth(0.68, 1, x));
+
 async function leafTurn(kind, sign, ms, go, s, ctx) {
   const e = curlEngine();
   const rigid = kind === 'flip';
-  const angle = rigid ? 0 : 0.24;
+  const angle = rigid ? 0 : curlAngle();
   // first frame: just the old page, then the book moves underneath it
   showSnap(s);
   await nextFrame();
@@ -501,7 +550,12 @@ async function leafTurn(kind, sign, ms, go, s, ctx) {
   if (!e.begin(setup)) { ctx.done = true; await liveReady(n?.cfi); hideSnap(); return; }
   let t = 0;
   const at = (x) => (setup.reverse ? 1 - x : x);
-  const frame = (tt) => { t = tt; const a = backAlpha(setup, tt); fadeStill(setup, a); e.draw(tt, angle, { backAlpha: a, rigid }); };
+  const frame = (tt, x = setup.reverse ? 1 - tt : tt) => {
+    t = tt;
+    const a = backAlpha(setup, tt);
+    fadeStill(setup, a);
+    e.draw(tt, angle, { backAlpha: a, rigid, shadow: shadowFor(x) });
+  };
   if (setup.under) showUnder(setup.under);
   if (setup.still) showSnap(s, clipFor(setup.still, s.W)); else hideSnap();
   frame(at(0));
@@ -518,7 +572,7 @@ async function leafTurn(kind, sign, ms, go, s, ctx) {
   }
   const duration = Math.min(1400, Math.max(420, ms * 2.2));
   const ease = rigid ? flipEase : curlEase;
-  await run(duration, (x) => frame(at(ease(x))), true);
+  await run(duration, (x) => { const k = ease(x); frame(at(k), k); }, true);
   ctx.done = true;
   await finish(e, { exact: !!setup.under || !!setup.back, cfi: here() });
 }
@@ -539,7 +593,7 @@ async function finish(e, { leaf = !!e, exact = false, cfi = null } = {}) {
 
 // Adaptive quality: if frames come slowly, the next turns draw the moving
 // page at a lower resolution (it is in motion, so this is hard to see).
-const QUALITY = [1, 0.85, 0.72, 0.6, 0.5];
+const QUALITY = [1, 0.9, 0.8, 0.7];
 let qualityStep = 0;
 function adapt(intervals) {
   if (intervals.length < 6 || !engine) return;
@@ -571,7 +625,7 @@ function run(duration, frame, measure = false) {
 // Returns a controller, or null if the curl can't run. The book moves to the
 // new page as soon as the drag starts (under the snapshot); if the reader
 // lets go without turning, it moves back.
-export async function startDrag({ sign, dir = sign, y, go, undo }) {
+export async function startDrag({ sign, dir = sign, go, undo }) {
   if (!webglAvailable()) return null;
   if ((dir > 0 && R.location?.atEnd) || (dir < 0 && R.location?.atStart)) return null;
   hurry = false;
@@ -590,16 +644,15 @@ export async function startDrag({ sign, dir = sign, y, go, undo }) {
   await go();
   const setup = leafSetup(s, sign, arrivingNow(ctx));
   if (!e.begin(setup)) { await undo(); hideSnap(); release(); return null; }
-  const stageTop = $('#stage').getBoundingClientRect().top;
   const stageLeft = $('#stage').getBoundingClientRect().left;
-  const angleFor = (py) => Math.max(-0.5, Math.min(0.5, ((py - stageTop) / setup.leaf.h - 0.5) * 1.1));
-  let angle = angleFor(y);
+  // the fold keeps the tilt chosen in settings wherever the page is held
+  const angle = curlAngle();
   let q = 0, q0 = null;
   const draw = () => {
     const t = setup.reverse ? 1 - q : q;
     const a = backAlpha(setup, t);
     fadeStill(setup, a);
-    e.draw(t, angle, { backAlpha: a });
+    e.draw(t, angle, { backAlpha: a, shadow: shadowFor(q) });
   };
   if (setup.under) showUnder(setup.under);
   if (setup.still) showSnap(s, clipFor(setup.still, s.W)); else hideSnap();
@@ -615,9 +668,8 @@ export async function startDrag({ sign, dir = sign, y, go, undo }) {
   let pending = null;
   const flushMove = () => {
     if (!pending) return;
-    const [px, py] = pending;
+    const [px] = pending;
     pending = null;
-    angle = angleFor(py) * (1 - q * 0.4);
     const local = (px - stageLeft - setup.hinge) * setup.side;
     const t = e.tForEdge(Math.min(local, setup.leaf.w - 1), angle);
     q = setup.reverse ? 1 - t : t;
@@ -639,11 +691,8 @@ export async function startDrag({ sign, dir = sign, y, go, undo }) {
       const finishTurn = q > 0.55 || moved > 0.28 || (vel > 0.35 && moved > 0.03);
       const from = q, to = finishTurn ? 1 : 0;
       const duration = Math.max(180, Math.abs(to - from) * 620);
-      const a0 = angle;
       await run(duration, (x) => {
-        const k = releaseEase(x);
-        q = from + (to - from) * k;
-        angle = a0 * (1 - k);
+        q = from + (to - from) * releaseEase(x);
         draw();
       });
       ctx.done = true;

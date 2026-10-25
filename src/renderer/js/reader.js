@@ -360,7 +360,7 @@ const relayoutSoon = debounce(() => relayout(), 220);
 
 // Settings that don't change how a page looks, so the pictures of the pages
 // kept for turning stay good.
-const UNSEEN_KEYS = /^(pageAnimation|animationMs|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
+const UNSEEN_KEYS = /^(pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
 
 function onSettingsChanged(s, changed) {
   if (!R.open) return;

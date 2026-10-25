@@ -42,7 +42,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 ![Highlight toolbar](docs/screenshots/highlight-toolbar.png)
 
 **Page turning**
-- **Page curl** like Apple Books: the page bends around a moving fold, with lighting, the real next page printed on the back of the turning leaf, and soft shadows, drawn with WebGL. Grab the margin beside the text and drag to turn it by hand; let go early and it falls back
+- **Page curl** like Apple Books: the page bends around a moving fold, with lighting, the real next page printed on the back of the turning leaf, and soft shadows, drawn with WebGL. Choose whether the bottom corner, the top corner or the whole edge leads. Grab the margin beside the text and drag to turn it by hand; let go early and it falls back
 - In a two-page spread only one leaf turns, around the spine: forward the right page turns over onto the left; back, the left page returns to the right
 - Also: a stiff flip, slide, push, cover, fade, zoom and rise, all working from a snapshot of the spread so both pages always move together, with live previews in settings
 - Every animation works from real pictures of the pages: the pages either side (and one further) are rendered ahead of time in a hidden window, so a turn starts on the next frame, the arriving page is complete from the first frame, and the live book is only revealed once it has fully drawn. Turns animate with the settings or sidebar open too. This works with hardware acceleration off too, and the curl adapts its resolution to keep the frame rate up on slower machines

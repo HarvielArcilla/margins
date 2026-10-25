@@ -82,29 +82,30 @@ void main() {
   gl_FragColor = vec4(c.rgb * (1.0 - sh), c.a + (1.0 - c.a) * sh);
 }`;
 
-// Lighting and the shadow of the flipped part are worked out per vertex
-// (the mesh is fine enough that it looks the same), so each pixel only does
-// a texture read and a multiply — this is what keeps the curl smooth when
-// the window is drawn without a GPU.
+// The vertex shader bends the page; lighting, the highlight along the curl
+// and the shadow the flipped part casts on the flat page are worked out per
+// pixel from the interpolated normal and position, so they stay smooth
+// however coarse the mesh is (per-vertex lighting showed facets and stepped
+// shadow edges where the curl is tight).
 const VS_LEAF = COMMON + `
 attribute vec2 aUV;
 uniform float uPersp;
-uniform float uShadow;
 varying vec2 vTex;
 varying vec2 vBackTex;    // where this point of the back is on the next page
-varying float vFace;      // >0 front, <0 back
-varying float vShade;     // diffuse lighting
-varying float vSpec;      // highlight along the curl
-varying float vFlatShadow; // shadow of the flipped part on the flat front
-varying float vFlat;      // 1 where the page still lies flat
+varying vec2 vP;          // position on the flat leaf (leaf coords)
+varying vec3 vN;          // surface normal
+varying float vCurl;      // 1 on the curved part
+varying float vD;         // distance past the fold line (<= 0: lying flat)
 void main() {
   vec2 p = aUV * vec2(uLeaf.x, uLeaf.z);
   vec2 screen0 = vec2(uHinge + uSide * p.x, uLeaf.y + p.y);
   vTex = texAt(screen0);
   // the back of a leaf, once turned over, lies mirrored across the hinge
   vBackTex = texAt(vec2(uHinge - uSide * p.x, uLeaf.y + p.y));
+  vP = p;
   float r = max(uFold.z, 0.01);
   float d = dot(p - uFold.xy, uN);
+  vD = d;
   vec2 q = p;
   float z = 0.0;
   vec3 n = vec3(0.0, 0.0, 1.0);
@@ -130,16 +131,8 @@ void main() {
   }
   vec2 s = vec2(uHinge + uSide * q.x, uLeaf.y + q.y);
   n.x *= uSide;
-  vFace = n.z;
-  vec3 nf = n.z >= 0.0 ? n : -n;
-  vec3 L = normalize(vec3(-0.35, -0.45, 1.0));
-  float diff = clamp(dot(nf, L), 0.0, 1.0) / L.z;
-  vShade = mix(0.42, 1.0, clamp(diff, 0.0, 1.0)) + 0.04 * clamp(diff - 1.0, 0.0, 1.0);
-  vec3 refl = reflect(-L, nf);
-  vSpec = curl * (uRigid < 0.0 ? 0.09 : 0.0) * pow(max(refl.z, 0.0), 10.0);
-  vFlat = (uRigid < 0.0 && d <= 0.0) ? 1.0 : 0.0;
-  float o = flippedOutside(p);
-  vFlatShadow = (o > 0.0 && o < 60.0) ? 0.22 * exp(-o / 14.0) * uShadow : 0.0;
+  vN = n;
+  vCurl = curl;
   vec2 c = uRes * 0.5;
   s = c + (s - c) * (1.0 + z * uPersp);
   gl_Position = vec4(s.x / uRes.x * 2.0 - 1.0, 1.0 - s.y / uRes.y * 2.0, -z * 0.0005, 1.0);
@@ -150,44 +143,55 @@ uniform vec3 uPaper;
 uniform float uBackAlpha;
 uniform float uFrontLive;
 uniform float uShowThrough;
+uniform float uShadow;
 uniform vec3 uTint;       // night light / dimming applied to drawn paper
 varying vec2 vTex;
 varying vec2 vBackTex;
-varying float vFace;
-varying float vShade;
-varying float vSpec;
-varying float vFlatShadow;
-varying float vFlat;
+varying vec2 vP;
+varying vec3 vN;
+varying float vCurl;
+varying float vD;
 void main() {
   vec3 paper = uPaper * uTint;
-  if (vFace >= 0.0) {
+  vec3 n = normalize(vN);
+  float face = n.z;
+  vec3 nf = face >= 0.0 ? n : -n;
+  vec3 L = normalize(vec3(-0.35, -0.45, 1.0));
+  float diff = clamp(dot(nf, L), 0.0, 1.0) / L.z;
+  // soft wrap lighting: the fold darkens gradually instead of banding
+  float shade = mix(0.62, 1.0, smoothstep(0.0, 1.0, clamp(diff, 0.0, 1.0))) + 0.03 * clamp(diff - 1.0, 0.0, 1.0);
+  vec3 refl = reflect(-L, nf);
+  float spec = clamp(vCurl, 0.0, 1.0) * (uRigid < 0.0 ? 0.07 : 0.0) * pow(max(refl.z, 0.0), 8.0);
+  float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
+  float o = flippedOutside(vP);
+  float flatShadow = (o > 0.0 && o < 80.0) ? 0.2 * exp(-o / 16.0) * uShadow : 0.0;
+  if (face >= 0.0) {
     if (uFrontLive > 0.5) {
       // the arriving page lying in place: let the real page show through,
       // darkened by the shadow of the part still lifted over it
-      if (vFlat > 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, vFlatShadow); return; }
+      if (isFlat > 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, flatShadow); return; }
       if (uRigid >= 0.0) {
         float a = smoothstep(0.0, 0.9, uRigid);
-        gl_FragColor = vec4(paper * vShade * a, a);
+        gl_FragColor = vec4(paper * shade * a, a);
         return;
       }
-      gl_FragColor = vec4(paper * vShade + vSpec, 1.0);
+      gl_FragColor = vec4(paper * shade + spec, 1.0);
       return;
     }
     vec3 col = texture2D(uTex, vTex).rgb;
-    float shade = vShade * (1.0 - vFlatShadow * vFlat);
-    gl_FragColor = vec4(col * shade + vSpec, 1.0);
+    gl_FragColor = vec4(col * shade * (1.0 - flatShadow * isFlat) + spec, 1.0);
   } else {
     if (uHasBack > 0.5) {
       // the real page on the back of this leaf
       vec3 b = texture2D(uBack, vBackTex).rgb;
-      gl_FragColor = vec4((b * vShade + vSpec) * uBackAlpha, uBackAlpha);
+      gl_FragColor = vec4((b * shade + spec) * uBackAlpha, uBackAlpha);
       return;
     }
     // unknown back: paper, with the print faintly showing through (mirrored)
     vec3 front = uFrontLive > 0.5 ? paper : texture2D(uTex, vTex).rgb;
     float ink = clamp(length(front - paper) * 1.6, 0.0, 1.0);
     vec3 col = mix(paper, front, ink * uShowThrough) * 0.94;
-    gl_FragColor = vec4((col * vShade + vSpec) * uBackAlpha, uBackAlpha);
+    gl_FragColor = vec4((col * shade + spec) * uBackAlpha, uBackAlpha);
   }
 }`;
 
@@ -224,7 +228,7 @@ export class Curl {
   constructor(host, { grid, soft = false } = {}) {
     this.host = host;
     this.soft = soft;
-    grid ||= soft ? [72, 48] : [96, 64];
+    grid ||= soft ? [88, 56] : [112, 72];
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'curl-canvas';
     this.canvas.hidden = true;
@@ -232,7 +236,7 @@ export class Curl {
     this.grid = grid;
     // Shadows are soft, so they are drawn on a small canvas that the
     // compositor stretches over the page: a fraction of the work.
-    this.shadowScale = soft ? 0.25 : 0.5;
+    this.shadowScale = soft ? 0.33 : 0.5;
     this.shadowCanvas = document.createElement('canvas');
     this.shadowCanvas.className = 'curl-shadow';
     this.shadowCanvas.hidden = true;
@@ -321,7 +325,9 @@ export class Curl {
     this.o = { showThrough: 0.06, persp: 0.00035, frontLive: false, tint: [1, 1, 1], ...opts };
     // quality (set by turn-anim from measured frame times) trades sharpness
     // of the moving page for frame rate on slower machines
-    this.dpr = (this.soft ? Math.min(dpr, 1) : Math.min(dpr, 2)) * (this.quality || 1);
+    // without a GPU the curl is drawn a little below full sharpness on
+    // high-density screens; it is moving, so this is hard to see
+    this.dpr = (this.soft ? Math.min(dpr, 1.5) : Math.min(dpr, 2)) * (this.quality || 1);
     const cw = Math.round(opts.W * this.dpr), ch = Math.round(opts.H * this.dpr);
     if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
     Object.assign(this.canvas.style, { width: `${opts.W}px`, height: `${opts.H}px` });

@@ -56,6 +56,7 @@ export const DEFAULTS = {
   // Page turning
   pageAnimation: 'curl', // none | curl | flip | slide | push | cover | fade | zoom | rise
   animationMs: 280,
+  curlFrom: 'bottom', // bottom | middle | top: which corner leads the page curl
   clickZones: 'thirds', // thirds | halves | left-third | all-next | top-bottom | kindle | off
   invertZones: false,
   wheelTurns: true,

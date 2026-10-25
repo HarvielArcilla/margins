@@ -690,3 +690,11 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 .paper-card.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
 .paper-swatch { display: grid; place-items: center; aspect-ratio: 1 / .7; background-repeat: repeat; color: var(--muted); }
 .paper-name { opacity: .85; }
+
+/* page turn check (Settings → More → Display) */
+.status { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; background: var(--panel-2); font-size: 11.5px; }
+.status-row { display: flex; justify-content: space-between; gap: 12px; }
+.status-row > span:first-child { color: var(--muted); flex: none; }
+.status-row > span:last-child { text-align: right; overflow-wrap: anywhere; }
+.status-row .good { color: #3f9a5b; }
+.status-row .bad { color: #c8553d; }

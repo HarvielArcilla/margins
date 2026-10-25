@@ -7,6 +7,7 @@ import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts
 import { BUILTIN_TEMPLATES, snapshotTemplate, templatePatch } from './templates.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
 import { Curl } from './curl.js';
+import { turnStatus } from './turn-anim.js';
 import { PAPERS, tileUrl } from './paper.js';
 import { voices } from './tts.js';
 import { R } from './reader.js';
@@ -249,6 +250,7 @@ function pageTab() {
       el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
       el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
       range('animationMs', 'Animation speed', 100, 900, 20, (v) => (v < 200 ? 'Quick' : v < 400 ? 'Normal' : v < 650 ? 'Relaxed' : 'Slow')),
+      s.pageAnimation === 'curl' ? seg('curlFrom', 'Curl from', [['bottom', 'Bottom corner'], ['middle', 'Straight edge'], ['top', 'Top corner']]) : null,
       s.pageAnimation === 'curl' ? el('p.hint', 'With Page curl you can also drag the page: press in the margin beside the text and pull toward the spine.') : null,
       s.flow !== 'paginated' ? el('p.hint', 'Animations apply in Pages mode.') : null),
     section('Header & footer',
@@ -335,7 +337,7 @@ function drawLeafPreview(pv, kind, t) {
     previews.set(pv, st);
   }
   const rigid = kind === 'flip';
-  st.engine.draw(t, rigid ? 0 : 0.26, { backAlpha: 1 - Math.min(1, Math.max(0, (t - 0.9) / 0.1)), rigid });
+  st.engine.draw(t, rigid ? 0 : ({ top: -0.26, middle: 0 }[getSettings().curlFrom] ?? 0.26), { backAlpha: 1 - Math.min(1, Math.max(0, (t - 0.9) / 0.1)), rigid });
 }
 
 function startLeafPreview(pv, kind) {
@@ -547,7 +549,24 @@ function graphicsSection() {
       }, l))),
       el('p.hint', 'For flicker with hardware acceleration on (common with NVIDIA). Standard changes how frames reach Windows and keeps the GPU drawing; Strong is for flicker that remains, at some cost to smoothness.')) : null,
     sw('srgb', 'Standard colours (sRGB)', 'Keeps colours steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
-    changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null);
+    changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null,
+    turnStatusCtl());
+}
+
+// What the page-turn animations have to work with on this machine.
+function turnStatusCtl() {
+  const st = turnStatus();
+  const ok = (v) => v === 'working';
+  const line = (label, v) => el('div.status-row', el('span', label), el('span', { class: ok(v) ? 'good' : v === 'not tried' ? '' : 'bad' }, v));
+  const summary = ok(st.capture) || ok(st.pager)
+    ? 'Page turns are drawn from pictures of your pages.'
+    : st.capture === 'not tried' && st.pager === 'not tried'
+      ? 'Turn a page to check.'
+      : 'Margins couldn’t picture your pages, so animations fall back to simpler versions. The details below help with a bug report.';
+  return el('div.ctl',
+    el('label', 'Page turn check'),
+    el('p.hint', summary),
+    el('div.status', line('Screen capture', st.capture), line('Page renderer', st.pager), line('WebGL', st.webgl)));
 }
 
 document.addEventListener('voices-changed', () => { if (tab === 'more') render(); });

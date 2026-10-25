@@ -229,16 +229,21 @@ let pagerReady = null;
 let pagerSeq = 0;
 let pagerIdle = null;
 let lastPaint = null;
+let pagerScale = 1;
 
-function ensurePager() {
-  if (pager && !pager.isDestroyed()) return;
+// scale: the reader's devicePixelRatio, so pictures are as sharp as the page
+// on screen (2 on Retina displays). Changing it means a new pager.
+function ensurePager(scale = 1) {
+  if (pager && !pager.isDestroyed() && pagerScale === scale) return;
+  if (pager && !pager.isDestroyed()) pager.destroy();
+  pagerScale = scale;
   pager = new BrowserWindow({
     show: false,
     width: 800,
     height: 600,
     paintWhenInitiallyHidden: true,
     webPreferences: {
-      offscreen: true,
+      offscreen: { deviceScaleFactor: scale },
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
@@ -254,7 +259,8 @@ function ensurePager() {
     ipcMain.on('pager:hello', onHello);
   });
   pager.loadURL('app://reader/pager.html');
-  pager.on('closed', () => { pager = null; lastPaint = null; });
+  const w = pager;
+  w.on('closed', () => { if (pager === w) { pager = null; lastPaint = null; } });
 }
 let pagerPainted = null;
 
@@ -273,7 +279,7 @@ function pagerRender(spec) {
 
 async function pagerRenderNow(spec) {
   try {
-    ensurePager();
+    ensurePager(Math.max(1, Math.min(3, +spec.dpr || 1)));
     await pagerReady;
     closePagerSoon();
     const [cw, ch] = pager.getContentSize();
