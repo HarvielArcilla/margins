@@ -253,14 +253,15 @@ body.dropping #drop-hint { display: grid; }
   background: transparent; /* the paper continues under it */
   transition: opacity .2s ease;
 }
-/* Solid top bar: a calm band the pages (and the crease) tuck under. */
-#reader-view.solid-header #reader-topbar {
+/* The bars are separate bands above and below the pages. */
+#reader-topbar, #reader-footer {
   background: color-mix(in srgb, var(--bg) 94%, var(--fg));
   /* kept inside the bar: nothing may spill onto the page below, which is
      pictured for page turns without it */
   box-shadow: inset 0 -1px 0 var(--border);
 }
-:root[data-dark="1"] #reader-view.solid-header #reader-topbar { background: color-mix(in srgb, var(--bg) 92%, #fff); }
+:root[data-dark="1"] #reader-topbar, :root[data-dark="1"] #reader-footer { background: color-mix(in srgb, var(--bg) 92%, #fff); }
+#reader-footer { box-shadow: inset 0 1px 0 var(--border); }
 .tb-group { display: flex; align-items: center; gap: 1px; flex: none; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; }
 .tb-center { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 0 12px; }
@@ -340,14 +341,11 @@ body.focus-mode #reader-topbar, body.focus-mode #reader-footer { opacity: 0 !imp
 
 /* ---------- paper ---------- */
 #paper { position: absolute; inset: 0; z-index: 0; pointer-events: none; background-repeat: repeat; background-position: 0 0; }
-/* The crease runs the full height of the pages, like the gutter of an open
-   book: under a solid top bar it tucks beneath it; without one it reaches
-   the top of the window, softening off at the edge. It eases away behind the
-   footer so the middle of the footer stays clean. Its depth scales
-   one deep gradient (--crease 0..1) and its width. */
+/* The crease lives in the page area only: the top and bottom bars are
+   separate bands, and the turn animations picture exactly this area. Its
+   depth scales one deep gradient (--crease 0..1) and its width. */
 #spine { position: absolute; top: 0; bottom: 0; left: calc(var(--spine-x, -200px) - var(--crease-w, 120px) / 2); width: var(--crease-w, 120px); z-index: 0; pointer-events: none; display: none;
   opacity: var(--crease, .45);
-  -webkit-mask-image: linear-gradient(180deg, transparent, #000 18px, #000 calc(100% - var(--footer) - 4px), rgba(0,0,0,.25) calc(100% - var(--footer) / 2), transparent);
   background:
     linear-gradient(90deg, transparent 42%, rgba(255,255,255,.35) 46%, transparent 48.5%, transparent 51.5%, rgba(255,255,255,.35) 54%, transparent 58%),
     linear-gradient(90deg, transparent, rgba(40,25,10,.08) 28%, rgba(40,25,10,.24) 45%, rgba(40,25,10,.42) 49.5%, rgba(40,25,10,.42) 50.5%, rgba(40,25,10,.24) 55%, rgba(40,25,10,.08) 72%, transparent); }

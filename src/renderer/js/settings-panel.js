@@ -253,7 +253,6 @@ function pageTab() {
       s.flow !== 'paginated' ? el('p.hint', 'Animations apply in Pages mode.') : null),
     section('Header & footer',
       toggleCtl('showHeader', 'Show top bar'),
-      s.showHeader ? toggleCtl('solidHeader', 'Solid top bar', 'A bar the pages tuck under. Off, the page runs to the top of the window.') : null,
       toggleCtl('showFooter', 'Show footer'),
       toggleCtl('hideChromeWhileReading', 'Hide bars while reading', 'Move the mouse to the top or bottom edge, or click the middle, to bring them back.'),
       toggleCtl('showScrubber', 'Progress scrubber in footer'),
@@ -532,13 +531,21 @@ window.api.graphics.get().then((g) => { gfx = g; gfxStartup = { ...g }; });
 
 function graphicsSection() {
   if (!gfx) return null;
-  const changed = gfx.hardwareAcceleration !== gfxStartup.hardwareAcceleration || gfx.srgb !== gfxStartup.srgb;
+  const changed = ['hardwareAcceleration', 'srgb', 'flickerFix'].some((k) => gfx[k] !== gfxStartup[k]);
+  const windows = navigator.userAgent.includes('Windows');
   const sw = (key, label, hint) => el('label.ctl.toggle',
     el('span', el('span.t-label', label), el('span.hint', hint)),
     el('input', { type: 'checkbox', checked: !!gfx[key], onchange: async (e) => { gfx = await window.api.graphics.set({ [key]: e.target.checked }); render(); } }),
     el('span.switch'));
   return section('Display',
     sw('hardwareAcceleration', 'Hardware acceleration', 'Smoother animations when on. Off by default on Windows, where some GPUs (notably NVIDIA with HDR) flicker with it.'),
+    windows && gfx.hardwareAcceleration ? el('div.ctl',
+      el('label', 'Flicker fix'),
+      el('div.seg', [['off', 'Off'], ['standard', 'Standard'], ['strong', 'Strong']].map(([v, l]) => el('button', {
+        class: (gfx.flickerFix || 'off') === v ? 'on' : '',
+        onclick: async () => { gfx = await window.api.graphics.set({ flickerFix: v }); render(); },
+      }, l))),
+      el('p.hint', 'For flicker with hardware acceleration on (common with NVIDIA). Standard changes how frames reach Windows and keeps the GPU drawing; Strong is for flicker that remains, at some cost to smoothness.')) : null,
     sw('srgb', 'Standard colours (sRGB)', 'Keeps colours steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
     changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null);
 }

@@ -14,7 +14,8 @@ const store = require('./store');
 const GPU_FILE = path.join(app.getPath('userData'), 'graphics.json');
 function readGraphics() {
   // Off by default on Windows, where some GPU/HDR setups flicker; on elsewhere.
-  const defaults = { hardwareAcceleration: process.platform !== 'win32', srgb: process.platform === 'win32' };
+  const win = process.platform === 'win32';
+  const defaults = { hardwareAcceleration: !win, srgb: win, flickerFix: win ? 'standard' : 'off' };
   try { return { ...defaults, ...JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')) }; } catch { return defaults; }
 }
 const graphics = readGraphics();
@@ -28,6 +29,14 @@ if (!graphics.hardwareAcceleration) {
 // otherwise re-tonemaps every frame, which shows up as washed-out colours and
 // flickering when layers change.
 if (graphics.srgb) app.commandLine.appendSwitch('force-color-profile', 'srgb');
+// Flicker with the GPU on (Windows, notably NVIDIA): Chromium hands its frames
+// to Windows through DirectComposition and multi-plane overlays, which some
+// drivers present out of step. 'standard' turns DirectComposition off (the
+// GPU still draws everything); 'strong' also stops the GPU compositing layers.
+if (process.platform === 'win32' && graphics.hardwareAcceleration) {
+  if (graphics.flickerFix === 'standard' || graphics.flickerFix === 'strong') app.commandLine.appendSwitch('disable-direct-composition');
+  if (graphics.flickerFix === 'strong') app.commandLine.appendSwitch('disable-gpu-compositing');
+}
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },

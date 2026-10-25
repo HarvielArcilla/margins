@@ -30,7 +30,6 @@
   <section id="reader-view" class="immersive">
     <!-- paper texture and the spine's shadow, under the pages -->
     <div id="paper" hidden></div>
-    <div id="spine"></div>
     <header id="reader-topbar" class="topbar">
       <div class="tb-group">
         <button class="icon-btn" id="back-btn" title="Library (Ctrl+L)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span></button>
@@ -56,6 +55,7 @@
     </header>
 
     <div id="stage">
+      <div id="spine"></div>
       <div id="viewer"><div id="book"></div></div>
       <div id="ruler" hidden></div>
       <div id="reader-loading" hidden><div class="spinner"></div>Opening book…</div>

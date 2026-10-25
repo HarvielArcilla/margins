@@ -75,7 +75,6 @@ export const DEFAULTS = {
 
   // Chrome
   showHeader: true,
-  solidHeader: true,
   showFooter: true,
   footerLeft: 'chapter', // chapter | title | time | none
   footerCenter: 'page', // page | chapter-left | book-left | percent | none

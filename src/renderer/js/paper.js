@@ -218,7 +218,6 @@ export function apply(s, dark) {
   const depth = Math.max(0, Math.min(100, s.creaseDepth ?? 45)) / 100;
   rv.style.setProperty('--crease', depth.toFixed(3));
   rv.style.setProperty('--crease-w', `${Math.round(70 + depth * 110)}px`);
-  rv.classList.toggle('solid-header', s.solidHeader !== false && s.showHeader !== false);
 }
 
 // Where the spine is, for the gutter shadow in two-page spreads.
@@ -226,5 +225,6 @@ export function placeSpine(L, stageLeft) {
   const rv = $('#reader-view');
   if (!rv) return;
   rv.classList.toggle('two-pages', L.cols === 2);
-  if (L.cols === 2) rv.style.setProperty('--spine-x', `${stageLeft + L.padX + L.width / 2}px`);
+  // the crease lives inside the page area (#stage), so it is relative to it
+  if (L.cols === 2) rv.style.setProperty('--spine-x', `${L.padX + L.width / 2}px`);
 }
