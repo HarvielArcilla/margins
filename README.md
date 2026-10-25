@@ -75,7 +75,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Full-text search, collapsible table of contents with percentages, go to percentage, progress scrubber
 - Read aloud with system voices, word-by-word highlighting, automatic page turning
 - Right-to-left books turn the right way
-- Display options for Windows HDR / NVIDIA auto-HDR (colours pinned to sRGB) and a hardware-acceleration switch if your GPU flickers
+- Hardware acceleration is off by default, which avoids flickering on some GPUs (notably NVIDIA on Windows); turn it on in Reading settings → More → Display if you prefer. Colours are pinned to sRGB on Windows for HDR / auto-HDR setups
 - Everything stays on your computer
 
 ## Screenshots

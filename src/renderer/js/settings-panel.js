@@ -375,7 +375,7 @@ function graphicsSection() {
     el('input', { type: 'checkbox', checked: !!gfx[key], onchange: async (e) => { gfx = await window.api.graphics.set({ [key]: e.target.checked }); render(); } }),
     el('span.switch'));
   return section('Display',
-    sw('hardwareAcceleration', 'Hardware acceleration', 'Turn off if pages flicker or tear — some GPU drivers and HDR setups disagree with it.'),
+    sw('hardwareAcceleration', 'Hardware acceleration', 'Off by default. Smoother animations when on, but some GPUs (notably NVIDIA on Windows) flicker with it.'),
     sw('srgb', 'Standard colours (sRGB)', 'Keeps colours steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
     changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null);
 }

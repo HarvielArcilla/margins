@@ -13,7 +13,7 @@ const store = require('./store');
 // app to be ready) in a tiny JSON file.
 const GPU_FILE = path.join(app.getPath('userData'), 'graphics.json');
 function readGraphics() {
-  const defaults = { hardwareAcceleration: true, srgb: process.platform === 'win32' };
+  const defaults = { hardwareAcceleration: false, srgb: process.platform === 'win32' };
   try { return { ...defaults, ...JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')) }; } catch { return defaults; }
 }
 const graphics = readGraphics();
