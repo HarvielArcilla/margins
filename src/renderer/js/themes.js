@@ -102,6 +102,12 @@ export const HIGHLIGHT_COLORS = [
   { id: 'gray', name: 'Gray', hex: '#a9a9a9' },
 ];
 
+// The highlight palette with any colours the reader has changed.
+export function highlightColors(s) {
+  const o = s?.highlightOverrides || {};
+  return HIGHLIGHT_COLORS.map((c) => (o[c.id] ? { ...c, hex: o[c.id] } : c));
+}
+
 export const HIGHLIGHT_STYLES = [
   { id: 'highlight', name: 'Highlight' },
   { id: 'marker', name: 'Marker (highlight + underline)' },

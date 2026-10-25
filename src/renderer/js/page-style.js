@@ -3,7 +3,7 @@
 // by the reader and the offscreen pager that renders neighbouring pages for
 // page turns — so both draw a page exactly the same way.
 import { buildContentCss } from './content-style.js';
-import { HIGHLIGHT_COLORS, isDark, rgba, mix } from './themes.js';
+import { highlightColors, isDark, rgba, mix } from './themes.js';
 
 export function applyPageCss(contents, s, theme) {
   const doc = contents.document;
@@ -15,7 +15,7 @@ export function applyPageCss(contents, s, theme) {
 
 // ---------- highlights ----------
 export function colorHex(id, s) {
-  return HIGHLIGHT_COLORS.find((c) => c.id === id)?.hex
+  return highlightColors(s).find((c) => c.id === id)?.hex
     || (s?.customHighlightColors || []).find((c) => c.id === id)?.hex
     || (/^#[0-9a-f]{6}$/i.test(id) ? id : '#f6d23f');
 }

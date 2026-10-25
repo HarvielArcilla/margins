@@ -194,7 +194,9 @@ async function toBitmap(raw, W, H) {
 // only usable when nothing is floating over the page.
 let captureFailures = 0;
 async function capture() {
-  if (captureFailures >= 2 || window.__noCapture || overlayCovering()) return null;
+  // with rounded page corners a capture would include the desk in the
+  // corners; the page renderer draws the page square, as a turning leaf needs
+  if (captureFailures >= 2 || window.__noCapture || overlayCovering() || R.pageRadius > 0) return null;
   const r = stageRect();
   if (r.W < 10 || r.H < 10) return null;
   let raw;
@@ -498,7 +500,7 @@ function leafSetup(s, sign, n) {
   const spread = L?.cols === 2;
   const W = s.W, H = s.H;
   const spine = spread ? Math.round(L.padX + L.width / 2) : 0;
-  const base = { image: s.bitmap, W, H, cap: { x: 0, y: 0, w: W, h: H }, ...themeColors() };
+  const base = { image: s.bitmap, W, H, cap: { x: 0, y: 0, w: W, h: H }, radius: R.pageRadius || 0, ...themeColors() };
   if (spread && sign > 0) return { ...base, back: n?.bitmap, under: n, hinge: spine, side: 1, leaf: { w: W - spine, top: 0, h: H }, still: [0, spine], landsOnPage: true };
   if (spread) return { ...base, back: n?.bitmap, under: n, hinge: spine, side: -1, leaf: { w: spine, top: 0, h: H }, still: [spine, W], landsOnPage: true };
   if (sign > 0) return { ...base, under: n, hinge: 0, side: 1, leaf: { w: W, top: 0, h: H }, still: null, landsOnPage: false };

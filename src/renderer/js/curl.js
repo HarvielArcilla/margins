@@ -149,6 +149,7 @@ uniform float uFrontLive;
 uniform float uShowThrough;
 uniform float uShadow;
 uniform vec3 uTint;       // night light / dimming applied to drawn paper
+uniform float uRadius;    // rounded corners at the leaf's free edge (px)
 varying vec2 vTex;
 varying vec2 vBackTex;
 varying vec2 vP;
@@ -156,6 +157,11 @@ varying vec3 vN;
 varying float vCurl;
 varying float vD;
 void main() {
+  if (uRadius > 0.0) {
+    // the page's own outer corners are rounded and move with the leaf
+    vec2 c = vec2(uLeaf.x - uRadius, clamp(vP.y, uRadius, uLeaf.z - uRadius));
+    if (vP.x > c.x && length(vP - c) > uRadius + 0.5) discard;
+  }
   vec3 paper = uPaper * uTint;
   vec3 n = normalize(vN);
   float face = n.z;
@@ -460,6 +466,7 @@ export class Curl {
     gl.uniform1f(u.uBackAlpha, backAlpha);
     gl.uniform1f(u.uFrontLive, o.frontLive ? 1 : 0);
     gl.uniform1f(u.uShowThrough, o.showThrough);
+    if (u.uRadius) gl.uniform1f(u.uRadius, o.radius || 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.backTex);
     gl.activeTexture(gl.TEXTURE0);

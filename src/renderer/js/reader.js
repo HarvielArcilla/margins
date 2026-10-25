@@ -154,6 +154,11 @@ export function applyPageSize(s = getSettings()) {
   rv.style.setProperty('--desk-y', `${Math.round((window.innerHeight * dy) / 100)}px`);
   rv.classList.toggle('has-desk', dx > 0 || dy > 0);
   if (s.deskColor) rv.style.setProperty('--desk', s.deskColor); else rv.style.removeProperty('--desk');
+  if (s.barColor) rv.style.setProperty('--bar', s.barColor); else rv.style.removeProperty('--bar');
+  // rounded outer corners only make sense with a desk to round them against
+  const radius = dx > 0 || dy > 0 ? Math.max(0, Math.min(32, s.pageRadius || 0)) : 0;
+  rv.style.setProperty('--page-radius', `${radius}px`);
+  R.pageRadius = radius;
 }
 
 function placeBook(L) {
@@ -377,7 +382,7 @@ const relayoutSoon = debounce(() => relayout(), 220);
 
 // Settings that don't change how a page looks, so the pictures of the pages
 // kept for turning stay good.
-const UNSEEN_KEYS = /^(deskColor|pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
+const UNSEEN_KEYS = /^(deskColor|barColor|pageRadius|pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
 
 function onSettingsChanged(s, changed) {
   if (!R.open) return;

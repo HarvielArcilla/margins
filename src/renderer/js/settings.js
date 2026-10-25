@@ -51,6 +51,9 @@ export const DEFAULTS = {
   deskX: 0, // desk at each side of the page, % of the window width (0-25)
   deskY: 0, // desk above and below the page, % of the window height (0-15)
   deskColor: '', // '' = a shade darker than the page
+  barColor: '', // top & bottom bars; '' = a shade darker than the page
+  pageRadius: 0, // px: rounded outer corners of the page (with a desk)
+  userSpacings: [], // saved spacing presets
   creaseDepth: 45, // 0-100: how dark the crease between two pages is
   vignette: 0, // 0-100
   autoDarkTheme: '', // theme used when the OS is in dark mode ('' = off)
@@ -100,6 +103,7 @@ export const DEFAULTS = {
   highlightOpacity: 45,
   quickHighlight: false, // highlight immediately on selection
   customHighlightColors: [],
+  highlightOverrides: {}, // built-in highlight colours the reader has changed: id → hex
 
   // Speech
   ttsVoice: '',
@@ -123,7 +127,7 @@ export const DEFAULTS = {
 
 // Keys that a book may override (everything visual about reading).
 export const BOOK_KEYS = Object.keys(DEFAULTS).filter((k) =>
-  !['customThemes', 'userTemplates', 'customHighlightColors', 'libraryView', 'librarySort', 'libraryCardSize',
+  !['customThemes', 'userTemplates', 'customHighlightColors', 'highlightOverrides', 'userSpacings', 'libraryView', 'librarySort', 'libraryCardSize',
     'dailyGoalMinutes', 'idleSeconds', 'defaultWpm', 'rememberPerBook'].includes(k));
 
 let global = { ...DEFAULTS };

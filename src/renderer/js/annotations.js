@@ -2,7 +2,7 @@
 // the CSS Custom Highlight API, the selection toolbar, and export.
 import { $, setChildren, el, icon, iconButton, toast, uid, promptDialog, escapeHtml } from './ui.js';
 import { getSettings, setSettings } from './settings.js';
-import { HIGHLIGHT_COLORS, HIGHLIGHT_STYLES, findTheme, isDark, rgba, mix } from './themes.js';
+import { highlightColors, HIGHLIGHT_STYLES, findTheme, isDark, rgba, mix } from './themes.js';
 import { R, onContents, liveContents, currentChapter, percentage, visibleRange, goTo } from './reader.js';
 import * as sidebar from './sidebar.js';
 import * as tts from './tts.js';
@@ -42,7 +42,7 @@ export function sortByPosition(list) {
 export function colorHex(id) { return pageColorHex(id, getSettings()); }
 
 export function allColors() {
-  return [...HIGHLIGHT_COLORS, ...getSettings().customHighlightColors];
+  return [...highlightColors(getSettings()), ...getSettings().customHighlightColors];
 }
 
 // ---------- create / edit ----------

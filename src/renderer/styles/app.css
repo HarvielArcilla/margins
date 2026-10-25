@@ -255,12 +255,12 @@ body.dropping #drop-hint { display: grid; }
 }
 /* The bars are separate bands above and below the pages. */
 #reader-topbar, #reader-footer {
-  background: color-mix(in srgb, var(--bg) 92%, var(--fg));
+  background: var(--bar, color-mix(in srgb, var(--bg) 92%, var(--fg)));
   /* kept inside the bar: nothing may spill onto the page below, which is
      pictured for page turns without it */
   box-shadow: inset 0 -1px 0 var(--border);
 }
-:root[data-dark="1"] #reader-topbar, :root[data-dark="1"] #reader-footer { background: color-mix(in srgb, var(--bg) 82%, #000); }
+:root[data-dark="1"] #reader-topbar, :root[data-dark="1"] #reader-footer { background: var(--bar, color-mix(in srgb, var(--bg) 82%, #000)); }
 #reader-footer { box-shadow: inset 0 1px 0 var(--border); }
 .tb-group { display: flex; align-items: center; gap: 1px; flex: none; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; }
@@ -292,6 +292,9 @@ body.focus-mode #stage { top: calc(10px + var(--desk-y, 0px)); bottom: calc(10px
 #reader-view:not(.has-desk) { background: var(--bg); }
 /* the page sits on the desk with a soft shadow (outside the page, so never
    in the pictures page turns are made from) */
+/* rounded outer corners: the page area clips to them, and the pictures that
+   move during sheet turns are rounded the same way */
+#reader-view.has-desk #stage, #reader-view.has-desk .turn-snap, #reader-view.has-desk .turn-under { border-radius: var(--page-radius, 0); }
 #reader-view.has-desk #stage { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 7%, transparent), 0 6px 24px -8px rgba(0,0,0,.28), 0 2px 6px -2px rgba(0,0,0,.12); }
 #viewer { position: absolute; inset: 0; transform-origin: center; }
 #book { position: absolute; }
@@ -731,3 +734,28 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 .desk-swatch.custom { background: conic-gradient(#e66, #ec6, #6c6, #6ce, #66e, #c6e, #e66); }
 .desk-swatch.custom.on { background: var(--c); }
 .desk-swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+
+/* buttons in settings never sit flush against the next control */
+.set-sec > .btn { margin: 0 0 16px; }
+.set-sec .row-btns { margin: 2px 0 18px; }
+.set-sec .row-btns:last-child { margin-bottom: 16px; }
+.ctl .row-btns { margin: 6px 0 0; }
+.ctl-top .link-btn { color: var(--accent); }
+.ctl-top .link-btn:hover { text-decoration: underline; }
+
+/* editable highlight colours */
+.swatch.edit { position: relative; cursor: pointer; box-shadow: inset 0 0 0 1px rgba(0,0,0,.14), 0 0 0 2px var(--bg), 0 0 0 3px color-mix(in srgb, var(--fg) 30%, transparent); }
+.swatch.edit input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
+
+/* spacing presets: little pages drawn with each preset's proportions */
+.sp-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 4px; }
+.sp-card { position: relative; display: grid; gap: 2px; justify-items: start; text-align: left; padding: 8px 8px 9px; border-radius: 11px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); transition: border-color .15s, box-shadow .15s; }
+.sp-card:hover { border-color: color-mix(in srgb, var(--fg) 25%, var(--border)); }
+.sp-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.sp-page { display: grid; align-content: start; gap: calc(var(--ps) * 5px + 1px); width: 100%; height: 50px; padding: 6px var(--pad); margin-bottom: 4px; border-radius: 6px; background: var(--panel); overflow: hidden; }
+.sp-para { display: grid; gap: calc((var(--lh) - 1) * 7px + 1px); }
+.sp-para i { display: block; height: 2px; border-radius: 1px; background: color-mix(in srgb, var(--fg) 45%, transparent); }
+.sp-para i:first-child { margin-left: var(--ind); }
+.sp-para i:last-child { width: 60%; }
+.sp-name { font-size: 12px; font-weight: 600; }
+.sp-blurb { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
