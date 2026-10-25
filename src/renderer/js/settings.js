@@ -49,7 +49,7 @@ export const DEFAULTS = {
   lastDarkTheme: 'night',
 
   // Page turning
-  pageAnimation: 'slide', // none | fade | slide | push | zoom | blur | flip | cover | peel
+  pageAnimation: 'curl', // none | curl | flip | slide | push | cover | fade | zoom | rise
   animationMs: 280,
   clickZones: 'thirds', // thirds | halves | left-third | all-next | top-bottom | kindle | off
   invertZones: false,
@@ -123,6 +123,9 @@ const listeners = new Set();
 export async function loadSettings() {
   const saved = await window.api.settings.get();
   global = { ...DEFAULTS, ...saved };
+  // animations renamed in 1.1
+  const renamed = { peel: 'curl', blur: 'fade' };
+  if (renamed[global.pageAnimation]) global.pageAnimation = renamed[global.pageAnimation];
   return global;
 }
 

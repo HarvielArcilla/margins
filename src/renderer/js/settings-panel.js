@@ -6,6 +6,7 @@ import { allThemes, isDark, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.
 import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
 import { BUILTIN_TEMPLATES, snapshotTemplate, templatePatch } from './templates.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
+import { Curl } from './curl.js';
 import { voices } from './tts.js';
 import { R } from './reader.js';
 
@@ -14,7 +15,7 @@ let fontQuery = '';
 
 export function isOpen() { return document.body.classList.contains('settings-open'); }
 export function open(which) { if (which) tab = which; document.body.classList.add('settings-open'); render(); }
-export function close() { document.body.classList.remove('settings-open'); }
+export function close() { document.body.classList.remove('settings-open'); disposePreviews(); }
 export function toggle(which) { if (isOpen() && (!which || which === tab)) close(); else open(which); }
 
 const TABS = [
@@ -29,6 +30,7 @@ const TABS = [
 
 export function render() {
   if (!isOpen()) return;
+  disposePreviews();
   const root = $('#settings');
   const scroll = root.querySelector('.set-body')?.scrollTop || 0;
   const body = el('div.set-body', ({
@@ -239,11 +241,10 @@ function pageTab() {
       s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
       s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null),
     section('Page turn animation',
-      el('div.anim-grid', ANIMATIONS.map((a) => el('button.anim-card', {
-        class: `anim-card ${s.pageAnimation === a.id ? 'on' : ''}`,
-        onclick: () => { setSettings({ pageAnimation: a.id }); render(); },
-      }, el('span', { class: `anim-demo demo-${a.id}` }, el('i')), el('span', a.name)))),
-      range('animationMs', 'Animation speed', 100, 900, 20, (v) => `${v} ms`),
+      el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
+      el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
+      range('animationMs', 'Animation speed', 100, 900, 20, (v) => (v < 200 ? 'Quick' : v < 400 ? 'Normal' : v < 650 ? 'Relaxed' : 'Slow')),
+      s.pageAnimation === 'curl' ? el('p.hint', 'With Page curl you can also drag the page: press in the margin beside the text and pull toward the spine.') : null,
       s.flow !== 'paginated' ? el('p.hint', 'Animations apply in Pages mode.') : null),
     section('Header & footer',
       toggleCtl('showHeader', 'Show top bar'),
@@ -254,6 +255,116 @@ function pageTab() {
       select('footerCenter', 'Footer middle', [['page', 'Page in chapter'], ['chapter-left', 'Time left in chapter'], ['book-left', 'Time left in book'], ['percent', 'Percent'], ['none', 'Nothing']]),
       select('footerRight', 'Footer right', [['percent', 'Percent'], ['book-left', 'Time left in book'], ['chapter-left', 'Time left in chapter'], ['clock', 'Clock'], ['page', 'Page in chapter'], ['none', 'Nothing']])),
   ];
+}
+
+// ---------- animation previews ----------
+// Each preview shows a little two-page spread turning exactly the way the
+// real animation does. Sheet animations are CSS; curl and flip run the same
+// WebGL page as the reader, on a tiny canvas.
+function miniSpread(cls) {
+  return el(`span.pv-spread.${cls}`, el('span.pv-pg'), el('span.pv-pg'));
+}
+// the new spread starts a chapter, so the change is easy to see
+const newSpread = () => el('span.pv-spread.pv-new', el('span.pv-pg.pv-heading'), el('span.pv-pg'));
+
+function animCard(a, on) {
+  const pv = el('span.pv', { dataset: { kind: a.id } }, newSpread(), LEAF.has(a.id) ? null : miniSpread('pv-old'));
+  const card = el('button.anim-card', {
+    class: `anim-card ${on ? 'on' : ''}`,
+    title: a.blurb,
+    onclick: () => { setSettings({ pageAnimation: a.id }); render(); },
+    onmouseenter: () => startLeafPreview(pv, a.id),
+    onmouseleave: () => { if (!card.classList.contains('on')) stopLeafPreview(pv); },
+  }, pv, el('span.anim-name', a.name), el('span.anim-blurb', a.blurb));
+  if (LEAF.has(a.id)) requestAnimationFrame(() => { drawLeafPreview(pv, a.id, 0); if (on) startLeafPreview(pv, a.id); });
+  return card;
+}
+
+const LEAF = new Set(['curl', 'flip']);
+const previews = new WeakMap();
+const previewEngines = new Set();
+
+// WebGL contexts are limited; free the old previews' whenever the panel redraws.
+function disposePreviews() {
+  for (const e of previewEngines) e.destroy();
+  previewEngines.clear();
+}
+
+function previewImage(w, h) {
+  const cs = getComputedStyle(document.documentElement);
+  const bg = cs.getPropertyValue('--bg').trim() || '#fff';
+  const fg = cs.getPropertyValue('--fg').trim() || '#222';
+  const c = document.createElement('canvas');
+  const k = 2;
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext('2d');
+  g.scale(k, k);
+  g.fillStyle = bg; g.fillRect(0, 0, w, h);
+  const page = (x0, x1, heading) => {
+    g.fillStyle = fg;
+    let y = h * 0.16;
+    if (heading) { g.globalAlpha = 0.7; g.fillRect(x0 + (x1 - x0) * 0.25, y, (x1 - x0) * 0.5, 2.2); y += 7; }
+    g.globalAlpha = 0.32;
+    for (let i = 0; y < h * 0.86; i++, y += 3.4) g.fillRect(x0, y, (x1 - x0) * (i % 6 === 5 ? 0.6 : 1), 1.3);
+    g.globalAlpha = 1;
+  };
+  page(w * 0.08, w * 0.44, false);
+  page(w * 0.56, w * 0.92, false);
+  return c;
+}
+
+function drawLeafPreview(pv, kind, t) {
+  let st = previews.get(pv);
+  if (!st) {
+    const W = pv.clientWidth, H = pv.clientHeight;
+    if (!W || !H) return;
+    const engine = new Curl(pv, { grid: [24, 16] });
+    if (!engine.ok) return;
+    const image = previewImage(W, H);
+    const cs = getComputedStyle(document.documentElement);
+    engine.begin({ image, W, H, cap: { x: 0, y: 0, w: W, h: H }, hinge: W / 2, side: 1, leaf: { w: W / 2, top: 0, h: H }, stat: [0, W / 2], paper: cs.getPropertyValue('--bg').trim(), persp: 0.004 });
+    engine.show(true);
+    previewEngines.add(engine);
+    st = { engine, raf: 0 };
+    previews.set(pv, st);
+  }
+  const rigid = kind === 'flip';
+  st.engine.draw(t, rigid ? 0 : 0.26, { backAlpha: 1 - Math.min(1, Math.max(0, (t - 0.9) / 0.1)), rigid });
+}
+
+function startLeafPreview(pv, kind) {
+  if (!LEAF.has(kind)) return;
+  drawLeafPreview(pv, kind, 0);
+  const st = previews.get(pv);
+  if (!st || st.raf) return;
+  const start = performance.now();
+  const cycle = 2600;
+  const tick = (now) => {
+    if (!pv.isConnected) { st.raf = 0; return; }
+    const x = ((now - start) % cycle) / cycle;
+    const k = Math.min(1, Math.max(0, (x - 0.15) / 0.55));
+    const t = k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2;
+    drawLeafPreview(pv, kind, t);
+    st.raf = requestAnimationFrame(tick);
+  };
+  st.raf = requestAnimationFrame(tick);
+}
+
+function stopLeafPreview(pv) {
+  const st = previews.get(pv);
+  if (!st) return;
+  cancelAnimationFrame(st.raf);
+  st.raf = 0;
+  drawLeafPreview(pv, pv.dataset.kind, 0);
+}
+
+async function tryAnimation() {
+  const { turn } = await import('./pageturn.js');
+  close();
+  await new Promise((r) => setTimeout(r, 350));
+  await turn(1);
+  await new Promise((r) => setTimeout(r, 500));
+  await turn(-1);
 }
 
 function controlsTab() {

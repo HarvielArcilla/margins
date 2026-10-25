@@ -17,7 +17,12 @@ function readGraphics() {
   try { return { ...defaults, ...JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')) }; } catch { return defaults; }
 }
 const graphics = readGraphics();
-if (!graphics.hardwareAcceleration) app.disableHardwareAcceleration();
+if (!graphics.hardwareAcceleration) {
+  app.disableHardwareAcceleration();
+  // Keep WebGL (the page curl) available through Chromium's software
+  // renderer. It only ever draws the app's own pages.
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+}
 // Pin colours to sRGB. With Windows HDR / NVIDIA RTX auto-HDR on, Chromium
 // otherwise re-tonemaps every frame, which shows up as washed-out colours and
 // flickering when layers change.

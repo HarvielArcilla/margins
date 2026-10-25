@@ -37,8 +37,9 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 ![Highlight toolbar](docs/screenshots/highlight-toolbar.png)
 
 **Page turning**
-- Animations: none, slide, push, fade, zoom, rise, 3D book flip, page curl, cover
-- In a two-page spread the flip and curl turn a single leaf around the spine, like a real book
+- **Page curl** like Apple Books: the page bends around a moving fold, with lighting, the back of the paper (print faintly showing through) and soft shadows, drawn with WebGL. Grab the margin beside the text and drag to turn it by hand; let go early and it falls back
+- In a two-page spread only one leaf turns, around the spine: forward the right page turns over onto the left; back, the left page returns to the right
+- Also: a stiff flip, slide, push, cover, fade, zoom and rise, all working from a snapshot of the spread so both pages always move together, with live previews in settings
 - Paginated, scroll-a-chapter, or endless scroll
 - Click/tap zone layouts (thirds, Kindle-style, halves, one-handed, tap-anywhere, top/bottom) with a live diagram, and a left-handed swap
 - Arrow keys, Space, Page Up/Down (Bluetooth page-turner pedals and presentation clickers), Vim keys, WASD, media & volume keys
@@ -46,7 +47,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Game controllers (bumpers, triggers, D-pad, stick)
 - Hands-free auto-turn on a timer and teleprompter-style auto-scroll
 
-![Turning one leaf of a two-page spread](docs/screenshots/page-flip.png)
+![Page curl in a two-page spread](docs/screenshots/page-curl.png)
 
 **Templates**
 - 14 one-click looks: Classic Novel, Modern Essay, Comfort, Night Owl, Lights Out, Dyslexia Friendly, Large Print, Compact, Academic, E-ink, Speed Reader, Typewriter, Manuscript

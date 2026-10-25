@@ -278,6 +278,7 @@ function attachContentListeners(contents) {
   };
   doc.addEventListener('wheel', (e) => turner.handleWheel(e), { passive: false });
   doc.addEventListener('mousemove', (e) => { const p = toTop(e); focus.pointer(p.y); stats.activity(); revealChromeNear(p.y); });
+  doc.addEventListener('mousedown', (e) => turner.handlePointerDown(toTop(e), e, doc));
   doc.addEventListener('mouseup', (e) => setTimeout(() => annotations.onMouseUp(contents, e, toTop(e)), 0));
   doc.addEventListener('click', (e) => {
     if (e.defaultPrevented) return;

@@ -85,6 +85,7 @@ function wireTopbar() {
   scrub.addEventListener('change', () => reader.goToPercent(+scrub.value / 1000));
   $('#stage').addEventListener('wheel', (e) => turner.handleWheel(e), { passive: false });
   $('#stage').addEventListener('click', (e) => { if (e.target.closest('#viewer iframe')) return; turner.handleClick({ x: e.clientX, y: e.clientY }); });
+  $('#stage').addEventListener('mousedown', (e) => { if (e.target.closest('#viewer iframe')) return; turner.handlePointerDown({ x: e.clientX, y: e.clientY }, e, document); });
 }
 
 function toggleFocusMode() {

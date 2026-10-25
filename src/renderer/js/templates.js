@@ -16,9 +16,9 @@ export const BUILTIN_TEMPLATES = [
     settings: Object.fromEntries(TEMPLATE_KEYS.map((k) => [k, DEFAULTS[k]])),
   },
   {
-    id: 'classic', name: 'Classic Novel', blurb: 'Garamond, justified, indented, page flip',
+    id: 'classic', name: 'Classic Novel', blurb: 'Garamond, justified, indented, page curl',
     settings: { font: 'EB Garamond', fontSize: 21, lineHeight: 1.5, textAlign: 'justify', paragraphIndent: 1.5,
-      paragraphSpacing: 0, hyphenation: true, theme: 'cream', pageAnimation: 'flip', lineLength: 60, dropCaps: true,
+      paragraphSpacing: 0, hyphenation: true, theme: 'cream', pageAnimation: 'curl', lineLength: 60, dropCaps: true,
       smallCapsHeadings: true, flow: 'paginated', spread: 'auto', publisherStyles: 'mix' },
   },
   {
@@ -78,9 +78,9 @@ export const BUILTIN_TEMPLATES = [
       paragraphSpacing: 1, theme: 'gruvbox-dark', lineLength: 64, hyphenation: false },
   },
   {
-    id: 'manuscript', name: 'Manuscript', blurb: 'Parchment, Cormorant, vignette, page peel',
+    id: 'manuscript', name: 'Manuscript', blurb: 'Parchment, Cormorant, vignette, page curl',
     settings: { font: 'Cormorant Garamond', fontSize: 23, fontWeight: 500, lineHeight: 1.5, theme: 'parchment',
-      paperTexture: 55, vignette: 40, pageAnimation: 'peel', dropCaps: true, textAlign: 'justify' },
+      paperTexture: 55, vignette: 40, pageAnimation: 'curl', dropCaps: true, textAlign: 'justify' },
   },
 ];
 
