@@ -28,7 +28,7 @@ export async function turn(dir, { source = 'user' } = {}) {
     if (s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
       await go();
     } else {
-      await animate(s.pageAnimation, visual(dir), s.animationMs, go);
+      await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir);
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
     focus.pageTurned();
@@ -80,7 +80,7 @@ export function handlePointerDown(pt, ev, doc) {
       dragging = true;
       busy = true;
       stats.activity();
-      startDrag({ sign: side, x: pt.x, y: pt.y, go: () => (dir > 0 ? rNext() : rPrev()), undo: () => (dir > 0 ? rPrev() : rNext()) })
+      startDrag({ sign: side, dir, x: pt.x, y: pt.y, go: () => (dir > 0 ? rNext() : rPrev()), undo: () => (dir > 0 ? rPrev() : rNext()) })
         .then((c) => {
           if (!c) { dragging = false; busy = false; return; }
           ctrl = c;

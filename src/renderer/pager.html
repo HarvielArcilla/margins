@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' app: blob: data:; script-src 'self' app:; style-src 'self' 'unsafe-inline' app: blob:; img-src 'self' app: blob: data:; font-src 'self' app: blob: data:; frame-src 'self' blob: app:; connect-src 'self' app: blob: data:; media-src 'self' app: blob: data:">
+  <title>Margins pager</title>
+  <link rel="stylesheet" href="styles/app.css">
+  <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/epub.min.js"></script>
+  <script type="module" src="js/pager.js"></script>
+</head>
+<!-- Offscreen: renders the pages next to the one being read, so page turns
+     can show them from the first frame. Never shown on screen. -->
+<body data-view="reader" class="ready pager">
+  <section id="reader-view">
+    <div id="paper" hidden></div>
+    <div id="spine"></div>
+    <div id="stage" style="position:absolute">
+      <div id="viewer"><div id="book"></div></div>
+    </div>
+    <div class="fx fx-vignette" hidden></div>
+    <div class="fx fx-warm" hidden></div>
+    <div class="fx fx-dim" hidden></div>
+  </section>
+</body>
+</html>

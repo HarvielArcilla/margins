@@ -100,6 +100,7 @@ function createWindow() {
   win.on('resize', save);
   win.on('move', save);
   win.on('close', save);
+  win.on('closed', () => { if (pager && !pager.isDestroyed()) pager.destroy(); });
   win.on('enter-full-screen', () => win.webContents.send('window:fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('window:fullscreen', false));
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -160,6 +161,134 @@ function buildMenu() {
     },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ---------- snapshots ----------
+// Returns { width, height, data (BGRA), order } or { error }.
+function bitmapOf(img, rect) {
+  if (!img || img.isEmpty()) return { error: 'empty capture' };
+  const data = img.toBitmap();
+  if (!data?.length) return { error: 'empty bitmap' };
+  // Work out the pixel size from the data: on scaled displays (125%, 150%)
+  // the image's own size can be reported in either pixels or points.
+  const px = data.length / 4;
+  const candidates = [];
+  const scales = typeof img.getScaleFactors === 'function' ? img.getScaleFactors() : [];
+  for (const sc of [...scales, 1]) { const z = img.getSize(sc); candidates.push([z.width, z.height]); }
+  const k = Math.sqrt(px / (rect.width * rect.height));
+  candidates.push([Math.round(rect.width * k), Math.round(rect.height * k)]);
+  for (const [w, h] of candidates) {
+    for (const dw of [0, -1, 1]) {
+      const ww = w + dw;
+      if (ww > 0 && px % ww === 0 && Math.abs(px / ww - h) <= 1) return { width: ww, height: px / ww, data, order: 'bgra' };
+    }
+  }
+  // last resort: resample to the requested size in points
+  const r = img.resize({ width: Math.round(rect.width), height: Math.round(rect.height) });
+  const d = r.toBitmap();
+  return { width: Math.round(rect.width), height: d.length / 4 / Math.round(rect.width), data: d, order: 'bgra' };
+}
+
+async function rawCapture(wc, rect) {
+  const r = { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+  try {
+    return bitmapOf(await wc.capturePage(r), r);
+  } catch (e) {
+    return { error: String(e?.message || e) };
+  }
+}
+
+// ---------- the pager ----------
+// A hidden, offscreen window that renders the pages next to the one being
+// read (with the same settings, size and highlights), so a page turn can
+// show the real next page from its first frame. Offscreen rendering works
+// with or without a GPU.
+let pager = null;
+let pagerReady = null;
+let pagerSeq = 0;
+let pagerIdle = null;
+let lastPaint = null;
+
+function ensurePager() {
+  if (pager && !pager.isDestroyed()) return;
+  pager = new BrowserWindow({
+    show: false,
+    width: 800,
+    height: 600,
+    paintWhenInitiallyHidden: true,
+    webPreferences: {
+      offscreen: true,
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: false,
+      backgroundThrottling: false,
+    },
+  });
+  pager.webContents.setFrameRate(30);
+  pager.webContents.on('paint', (_e, _dirty, image) => { lastPaint = image; pagerPainted?.(); });
+  pagerReady = new Promise((resolve) => {
+    const onHello = (e) => { if (e.sender === pager.webContents) { ipcMain.removeListener('pager:hello', onHello); resolve(); } };
+    ipcMain.on('pager:hello', onHello);
+  });
+  pager.loadURL('app://reader/pager.html');
+  pager.on('closed', () => { pager = null; lastPaint = null; });
+}
+let pagerPainted = null;
+
+function closePagerSoon() {
+  clearTimeout(pagerIdle);
+  pagerIdle = setTimeout(() => { if (pager && !pager.isDestroyed()) pager.destroy(); }, 3 * 60 * 1000);
+}
+
+// One page at a time: each render is captured before the next one starts.
+let pagerQueue = Promise.resolve();
+function pagerRender(spec) {
+  const run = pagerQueue.then(() => pagerRenderNow(spec));
+  pagerQueue = run.catch(() => {});
+  return run;
+}
+
+async function pagerRenderNow(spec) {
+  try {
+    ensurePager();
+    await pagerReady;
+    closePagerSoon();
+    const [cw, ch] = pager.getContentSize();
+    if (cw !== spec.win.W || ch !== spec.win.H) pager.setContentSize(spec.win.W, spec.win.H);
+    const id = ++pagerSeq;
+    const done = new Promise((resolve) => {
+      const timer = setTimeout(() => { ipcMain.removeListener('pager:done', onDone); resolve({ id, ok: false, error: 'timeout' }); }, 6000);
+      function onDone(e, msg) {
+        if (e.sender !== pager?.webContents || msg.id !== id) return;
+        clearTimeout(timer);
+        ipcMain.removeListener('pager:done', onDone);
+        resolve(msg);
+      }
+      ipcMain.on('pager:done', onDone);
+    });
+    pager.webContents.send('pager:render', { ...spec, id });
+    const msg = await done;
+    if (!msg.ok) return msg;
+    // make sure a frame with the new page has been painted, then grab it
+    await new Promise((resolve) => {
+      const t = setTimeout(resolve, 400);
+      pagerPainted = () => { pagerPainted = null; clearTimeout(t); resolve(); };
+      pager.webContents.invalidate();
+    });
+    const rect = spec.stage;
+    let shot = await rawCapture(pager.webContents, { x: rect.left, y: rect.top, width: rect.W, height: rect.H });
+    if (shot.error && lastPaint && !lastPaint.isEmpty()) {
+      const full = lastPaint.getSize();
+      const k = full.width / spec.win.W;
+      const crop = lastPaint.crop({ x: Math.round(rect.left * k), y: Math.round(rect.top * k), width: Math.round(rect.W * k), height: Math.round(rect.H * k) });
+      shot = bitmapOf(crop, { width: rect.W, height: rect.H });
+    }
+    return { ...msg, ...shot };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
 }
 
 // ---------- IPC ----------
@@ -290,22 +419,8 @@ function registerIpc() {
     return img.toDataURL();
   });
   // Raw pixels (no PNG encode/decode): much faster for page-turn snapshots.
-  handle('window:capture-raw', async (rect) => {
-    const img = await win.webContents.capturePage({
-      x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height),
-    });
-    const data = img.toBitmap();
-    const scales = typeof img.getScaleFactors === 'function' ? img.getScaleFactors() : [1];
-    let { width, height } = img.getSize(scales[0] || 1);
-    if (width * height * 4 !== data.length) {
-      // derive the pixel size from the data and the requested aspect ratio
-      const px = data.length / 4;
-      width = Math.round(Math.sqrt(px * (rect.width / rect.height)));
-      height = Math.round(px / width);
-    }
-    // Chromium's native pixel order on desktop is BGRA
-    return { width, height, data, order: 'bgra' };
-  });
+  handle('window:capture-raw', async (rect) => rawCapture(win.webContents, rect));
+  handle('pager:render', (spec) => pagerRender(spec));
   handle('bookcache:get', (id) => store.readJson(path.join('cache', `${id}.json`), {}));
   handle('bookcache:set', (id, data) => store.writeJson(path.join('cache', `${id}.json`), data));
   handle('graphics:get', () => ({ ...graphics, active: { ...graphics } }));

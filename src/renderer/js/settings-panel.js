@@ -243,7 +243,8 @@ function pageTab() {
     section('Layout',
       seg('flow', 'Reading mode', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
       s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
-      s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null),
+      s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null,
+      s.flow === 'paginated' && s.spread !== 'none' ? toggleCtl('spineShadow', 'Crease between pages', 'A soft fold down the middle of two-page spreads, like an open book.') : null),
     section('Page turn animation',
       el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
       el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
@@ -405,7 +406,7 @@ function paperPicker() {
     s.paperType === 'custom' ? el('div.row-btns', el('button.btn.small', {
       onclick: async () => { const name = await window.api.textures.import(); if (name) { setSettings({ paperImage: name, paperType: 'custom' }); render(); } },
     }, icon('upload', 13), 'Choose another image')) : null,
-    toggleCtl('spineShadow', 'Spine shadow', 'A soft shadow down the middle when two pages are side by side.'),
+    toggleCtl('spineShadow', 'Crease between pages', 'A soft fold down the middle when two pages are side by side.'),
   ];
 }
 

@@ -87,7 +87,7 @@ export function applyChromeTheme(theme) {
   // on every slider tick is visible as flicker on Windows.
   const chrome = { bg: theme.bg, fg: mix(theme.fg, theme.bg, 0.3), dark };
   const key = JSON.stringify(chrome);
-  if (key !== lastChrome) { lastChrome = key; window.api?.window.chrome(chrome); }
+  if (key !== lastChrome && !window.__pager) { lastChrome = key; window.api?.window.chrome(chrome); }
 }
 
 export const HIGHLIGHT_COLORS = [

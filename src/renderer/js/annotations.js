@@ -7,6 +7,7 @@ import { R, onContents, liveContents, currentChapter, percentage, visibleRange, 
 import * as sidebar from './sidebar.js';
 import * as tts from './tts.js';
 import { invalidate as invalidateSnapshot } from './turn-anim.js';
+import { drawHighlights, colorHex as pageColorHex } from './page-style.js';
 
 let items = [];
 let bookId = null;
@@ -38,11 +39,7 @@ export function sortByPosition(list) {
   return [...list].sort((a, b) => { try { return cfiCompare(a.cfi, b.cfi); } catch { return 0; } });
 }
 
-export function colorHex(id) {
-  return HIGHLIGHT_COLORS.find((c) => c.id === id)?.hex
-    || getSettings().customHighlightColors.find((c) => c.id === id)?.hex
-    || (/^#[0-9a-f]{6}$/i.test(id) ? id : '#f6d23f');
-}
+export function colorHex(id) { return pageColorHex(id, getSettings()); }
 
 export function allColors() {
   return [...HIGHLIGHT_COLORS, ...getSettings().customHighlightColors];
@@ -115,67 +112,17 @@ export function locationChanged() {
 }
 
 // ---------- drawing ----------
-const keyFor = (a) => `m-a-${a.style}-${colorHex(a.color).slice(1)}`;
-
-function ruleFor(key) {
-  const [, , style, hex] = key.split('-');
-  const s = getSettings();
-  const theme = R.theme || findTheme(s);
-  const dark = isDark(theme);
-  const c = `#${hex}`;
-  const alpha = (s.highlightOpacity / 100) * (dark ? 0.75 : 1);
-  const bg = rgba(c, alpha);
-  const line = dark ? mix(c, '#ffffff', 0.15) : mix(c, '#000000', 0.15);
-  const deco = (kind) => `text-decoration: underline ${kind} ${line}; text-decoration-thickness: 2px; text-underline-offset: 3px;`;
-  const body = {
-    highlight: `background-color: ${bg};`,
-    marker: `background-color: ${bg}; ${deco('solid')}`,
-    underline: deco('solid'),
-    wavy: `text-decoration: underline wavy ${line}; text-decoration-thickness: 1.5px; text-underline-offset: 3px;`,
-    dotted: deco('dotted'),
-    dashed: deco('dashed'),
-    double: `text-decoration: underline double ${line}; text-underline-offset: 2px;`,
-    strike: `text-decoration: line-through ${line}; text-decoration-thickness: 2px;`,
-    text: `color: ${dark ? mix(c, '#ffffff', 0.2) : mix(c, '#000000', 0.35)};`,
-    glow: `text-shadow: 0 0 6px ${rgba(c, 0.9)}, 0 0 1px ${rgba(c, 0.9)}; background-color: ${rgba(c, alpha * 0.35)};`,
-  }[style] || `background-color: ${bg};`;
-  return `::highlight(${key}) { ${body} }`;
-}
-
 function renderInContents(contents) {
-  const win = contents.window, doc = contents.document;
-  const reg = win?.CSS?.highlights;
-  if (!reg) return;
-  for (const k of [...reg.keys()]) if (k.startsWith('m-a-')) reg.delete(k);
-  const groups = new Map();
-  contents._annoRanges = [];
-  for (const a of highlights()) {
-    if (spineOf(a.cfi) !== contents.sectionIndex) continue;
-    let range;
-    try { range = contents.range(a.cfi); } catch { range = null; }
-    if (!range || range.collapsed) continue;
-    contents._annoRanges.push({ a, range });
-    const k = keyFor(a);
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k).push(range);
-  }
-  let css = '';
-  for (const [k, ranges] of groups) {
-    const h = new win.Highlight(...ranges);
-    h.priority = 2;
-    reg.set(k, h);
-    css += ruleFor(k) + '\n';
-  }
-  let tag = doc.getElementById('m-anno-style');
-  if (!tag) { tag = doc.createElement('style'); tag.id = 'm-anno-style'; doc.head.append(tag); }
-  if (tag.textContent !== css) tag.textContent = css;
+  const s = getSettings();
+  contents._annoRanges = drawHighlights(contents, items, s, R.theme || findTheme(s));
 }
 
-export function renderAll() {
+export function renderAll({ invalidate = true } = {}) {
   for (const c of liveContents()) renderInContents(c);
-  invalidateSnapshot();
+  if (invalidate) invalidateSnapshot();
 }
-export function restyle() { renderAll(); }
+// (settings changes invalidate the page pictures themselves when they need to)
+export function restyle() { renderAll({ invalidate: false }); }
 
 onContents((c) => renderInContents(c));
 

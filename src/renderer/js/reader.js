@@ -4,7 +4,7 @@
 import { $, setChildren, el, debounce, toast, countWords, clamp } from './ui.js';
 import { getSettings, onSettings, attachBook, detachBook } from './settings.js';
 import { findTheme, applyChromeTheme, isDark } from './themes.js';
-import { buildContentCss } from './content-style.js';
+import { applyPageCss } from './page-style.js';
 import * as annotations from './annotations.js';
 import * as turner from './pageturn.js';
 import * as stats from './stats.js';
@@ -110,7 +110,7 @@ function resolveTocSpine() {
 // - in "auto", two pages appear only when each can hold a comfortable line
 // - the text block is centred, and the footer lines up with its edges
 export function layoutFor(s, stageEl = $('#stage')) {
-  const W = stageEl.clientWidth, H = stageEl.clientHeight;
+  const W = stageEl.W ?? stageEl.clientWidth, H = stageEl.H ?? stageEl.clientHeight;
   const fs = s.fontSize;
   const paginated = s.flow === 'paginated';
   const m = Math.round(Math.min(s.marginH, Math.max(14, W * 0.055)));
@@ -254,10 +254,6 @@ window.addEventListener('resize', () => {
 
 // ---------- page content ----------
 function onContentReady(contents) {
-  const doc = contents.document;
-  const style = doc.createElement('style');
-  style.id = 'm-reader-style';
-  doc.head.append(style);
   styleContents(contents);
   attachContentListeners(contents);
   for (const fn of contentsHooks()) {
@@ -267,12 +263,7 @@ function onContentReady(contents) {
 
 function styleContents(contents) {
   const s = getSettings();
-  const tag = contents.document.getElementById('m-reader-style');
-  if (!tag) return;
-  // Rewriting an identical stylesheet still re-lays out the page, so only
-  // write when something visible changed.
-  const css = buildContentCss(s, R.theme || findTheme(s));
-  if (tag.textContent !== css) tag.textContent = css;
+  applyPageCss(contents, s, R.theme || findTheme(s));
 }
 
 function attachContentListeners(contents) {
@@ -367,9 +358,14 @@ const RELAYOUT_KEYS = new Set(['spread', 'columnGap', 'marginH', 'marginV', 'lin
 
 const relayoutSoon = debounce(() => relayout(), 220);
 
+// Settings that don't change how a page looks, so the pictures of the pages
+// kept for turning stay good.
+const UNSEEN_KEYS = /^(pageAnimation|animationMs|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
+
 function onSettingsChanged(s, changed) {
   if (!R.open) return;
-  invalidateSnapshot();
+  if (!changed || [...changed].some((k) => !UNSEEN_KEYS.test(k))) invalidateSnapshot();
+  else schedulePrepare();
   applyTheme();
   restyleAll();
   annotations.restyle();

@@ -1,0 +1,96 @@
+// The offscreen pager (see main.js): renders a given page of the open book
+// — the current one, or the one after/before it — exactly as the reader
+// draws it, so the main window can grab it as a picture for page turns.
+import { applyChromeTheme, isDark } from './themes.js';
+import { loadFonts } from './fonts.js';
+import { applyPageCss, drawHighlights, applyFixation } from './page-style.js';
+import * as paper from './paper.js';
+
+window.__pager = true;
+const $ = (s) => document.querySelector(s);
+const frame = () => new Promise((r) => requestAnimationFrame(r));
+
+let book = null, bookId = null, rendition = null, renditionKey = '';
+let spec = null; // the request being rendered (settings etc. for the hooks)
+
+function dress(contents) {
+  applyPageCss(contents, spec.s, spec.theme);
+  drawHighlights(contents, spec.items || [], spec.s, spec.theme);
+  applyFixation(contents, spec.s);
+}
+
+function applyLook() {
+  const { s, theme, stage, L, win } = spec;
+  applyChromeTheme(theme);
+  const rv = $('#reader-view');
+  Object.assign(rv.style, { width: `${win.W}px`, height: `${win.H}px` });
+  const fx = { dim: 1 - s.brightness / 100, warm: (s.warmth / 100) * 0.22, vignette: s.vignette / 100 };
+  for (const [k, v] of Object.entries(fx)) {
+    rv.style.setProperty(`--fx-${k}`, String(v));
+    const n = rv.querySelector(`.fx-${k}`);
+    if (n) n.hidden = v <= 0.001;
+  }
+  paper.apply(s, isDark(theme));
+  paper.placeSpine(L, stage.left);
+  const sp = $('#spine');
+  Object.assign(sp.style, { top: `${stage.top}px`, bottom: `${win.H - stage.top - stage.H}px` });
+  Object.assign($('#stage').style, { left: `${stage.left}px`, top: `${stage.top}px`, width: `${stage.W}px`, height: `${stage.H}px`, bottom: 'auto', right: 'auto' });
+  Object.assign($('#book').style, { position: 'absolute', left: `${L.padX}px`, top: `${L.padY}px`, width: `${L.width}px`, height: `${L.height}px` });
+  document.body.dataset.flow = s.flow;
+}
+
+async function ensureBook(id) {
+  if (bookId === id && book) return;
+  try { rendition?.destroy(); } catch { /* gone */ }
+  try { book?.destroy(); } catch { /* gone */ }
+  rendition = null; renditionKey = '';
+  const bytes = await window.api.library.read(id);
+  book = window.ePub(bytes);
+  await book.ready;
+  bookId = id;
+}
+
+async function ensureRendition() {
+  const { L, s } = spec;
+  const key = JSON.stringify([bookId, L.width, L.height, L.cols, L.gap, s.flow]);
+  if (rendition && key === renditionKey) {
+    for (const c of rendition.getContents()) dress(c);
+    return;
+  }
+  try { rendition?.destroy(); } catch { /* gone */ }
+  $('#book').replaceChildren();
+  rendition = book.renderTo($('#book'), {
+    width: L.width, height: L.height, allowScriptedContent: false,
+    spread: L.cols === 2 ? 'always' : 'none', minSpreadWidth: 0, resizeOnOrientationChange: false,
+    flow: 'paginated', manager: 'default', gap: L.gap,
+  });
+  rendition.hooks.content.register((c) => dress(c));
+  renditionKey = key;
+}
+
+async function settle() {
+  await document.fonts?.ready;
+  for (const c of rendition.getContents()) await c.document.fonts?.ready;
+  await frame(); await frame();
+}
+
+let queue = Promise.resolve();
+window.api.pager.onRender((req) => {
+  queue = queue.then(() => render(req)).catch((e) => window.api.pager.done({ id: req.id, ok: false, error: String(e?.message || e) }));
+});
+
+async function render(req) {
+  spec = req;
+  applyLook();
+  await ensureBook(req.bookId);
+  await ensureRendition();
+  await rendition.display(req.cfi);
+  if (req.which === 'next') await rendition.next();
+  else if (req.which === 'prev') await rendition.prev();
+  await settle();
+  const loc = rendition.currentLocation();
+  window.api.pager.done({ id: req.id, ok: true, cfi: loc?.start?.cfi || null, atEnd: !!loc?.atEnd, atStart: !!loc?.atStart });
+}
+
+await loadFonts();
+window.api.pager.hello();

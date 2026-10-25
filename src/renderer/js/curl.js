@@ -33,6 +33,8 @@ uniform vec3 uFold;       // fold point x, fold point y, radius (leaf coords)
 uniform vec2 uN;          // fold normal (points to the free edge)
 uniform vec4 uCap;        // texture region: x, y, w, h (css px)
 uniform sampler2D uTex;
+uniform sampler2D uBack;  // the page printed on the back of the leaf, if known
+uniform float uHasBack;
 uniform float uRigid;     // >= 0: rigid flip at this angle (radians); < 0: curl
 
 vec2 toLeaf(vec2 px) { return vec2((px.x - uHinge) * uSide, px.y - uLeaf.y); }
@@ -89,6 +91,7 @@ attribute vec2 aUV;
 uniform float uPersp;
 uniform float uShadow;
 varying vec2 vTex;
+varying vec2 vBackTex;    // where this point of the back is on the next page
 varying float vFace;      // >0 front, <0 back
 varying float vShade;     // diffuse lighting
 varying float vSpec;      // highlight along the curl
@@ -98,6 +101,8 @@ void main() {
   vec2 p = aUV * vec2(uLeaf.x, uLeaf.z);
   vec2 screen0 = vec2(uHinge + uSide * p.x, uLeaf.y + p.y);
   vTex = texAt(screen0);
+  // the back of a leaf, once turned over, lies mirrored across the hinge
+  vBackTex = texAt(vec2(uHinge - uSide * p.x, uLeaf.y + p.y));
   float r = max(uFold.z, 0.01);
   float d = dot(p - uFold.xy, uN);
   vec2 q = p;
@@ -147,6 +152,7 @@ uniform float uFrontLive;
 uniform float uShowThrough;
 uniform vec3 uTint;       // night light / dimming applied to drawn paper
 varying vec2 vTex;
+varying vec2 vBackTex;
 varying float vFace;
 varying float vShade;
 varying float vSpec;
@@ -171,7 +177,13 @@ void main() {
     float shade = vShade * (1.0 - vFlatShadow * vFlat);
     gl_FragColor = vec4(col * shade + vSpec, 1.0);
   } else {
-    // the back: paper, with the print faintly showing through (mirrored)
+    if (uHasBack > 0.5) {
+      // the real page on the back of this leaf
+      vec3 b = texture2D(uBack, vBackTex).rgb;
+      gl_FragColor = vec4((b * vShade + vSpec) * uBackAlpha, uBackAlpha);
+      return;
+    }
+    // unknown back: paper, with the print faintly showing through (mirrored)
     vec3 front = uFrontLive > 0.5 ? paper : texture2D(uTex, vTex).rgb;
     float ink = clamp(length(front - paper) * 1.6, 0.0, 1.0);
     vec3 col = mix(paper, front, ink * uShowThrough) * 0.94;
@@ -262,6 +274,12 @@ export class Curl {
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.index);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(idx), gl.STATIC_DRAW);
     this.count = idx.length;
+    this.backTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.backTex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     this.tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
@@ -273,9 +291,22 @@ export class Curl {
 
   // Upload the snapshot (an ImageBitmap, canvas or image). Done ahead of time
   // when possible so a turn starts drawing at once.
+  setBack(image) {
+    if (!this.ok) return;
+    this.hasBack = !!image;
+    if (!image || this.backImage === image) return;
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.backTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.activeTexture(gl.TEXTURE0);
+    this.backImage = image;
+  }
+
   setImage(image) {
     if (!this.ok || !image || this.image === image) return;
     const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
@@ -298,6 +329,7 @@ export class Curl {
     if (this.shadowCanvas.width !== sw || this.shadowCanvas.height !== sh) { this.shadowCanvas.width = sw; this.shadowCanvas.height = sh; }
     Object.assign(this.shadowCanvas.style, { width: `${opts.W}px`, height: `${opts.H}px` });
     this.setImage(opts.image);
+    this.setBack(opts.back || null);
     this.paper = hexRgb(opts.paper);
     return true;
   }
@@ -362,6 +394,8 @@ export class Curl {
       g.uniform2f(u.uN, N[0], N[1]);
       g.uniform4f(u.uCap, o.cap.x, o.cap.y, o.cap.w, o.cap.h);
       g.uniform1i(u.uTex, 0);
+      if (u.uBack) g.uniform1i(u.uBack, 1);
+      if (u.uHasBack) g.uniform1f(u.uHasBack, g === gl && this.hasBack ? 1 : 0);
       if (u.uShadow) g.uniform1f(u.uShadow, shadow);
       g.uniform1f(u.uRigid, rigid ? Math.PI * tt : -1);
       return u;
@@ -409,6 +443,10 @@ export class Curl {
     gl.uniform1f(u.uBackAlpha, backAlpha);
     gl.uniform1f(u.uFrontLive, o.frontLive ? 1 : 0);
     gl.uniform1f(u.uShowThrough, o.showThrough);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.backTex);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.mesh);
     const aUV = gl.getAttribLocation(this.leaf.p, 'aUV');
     gl.enableVertexAttribArray(aUV);

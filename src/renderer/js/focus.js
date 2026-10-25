@@ -5,6 +5,7 @@
 import { $ } from './ui.js';
 import { getSettings } from './settings.js';
 import { onContents, liveContents, R } from './reader.js';
+import { applyFixation as applyFixationTo } from './page-style.js';
 
 let rulerY = null;
 
@@ -68,40 +69,6 @@ export function refresh() {
 }
 
 // ---------- fixation emphasis ----------
-const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’]*/gu;
-
-function applyFixation(contents) {
-  const win = contents.window;
-  const reg = win?.CSS?.highlights;
-  if (!reg) return;
-  const s = getSettings();
-  if (!s.fixation) { reg.delete('m-fix'); contents._fixKey = null; return; }
-  const key = `${s.fixationStrength}`;
-  if (contents._fixKey === key && reg.has('m-fix')) return;
-  contents._fixKey = key;
-  const doc = contents.document;
-  const keep = 0.25 + (s.fixationStrength / 100) * 0.4; // share of each word kept bright
-  const ranges = [];
-  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n.parentElement?.closest('script,style,code,pre,svg') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
-  });
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const text = n.data;
-    WORD.lastIndex = 0;
-    for (let m = WORD.exec(text); m; m = WORD.exec(text)) {
-      const len = m[0].length;
-      if (len < 2) continue;
-      const head = Math.max(1, Math.ceil(len * keep));
-      if (head >= len) continue;
-      const r = doc.createRange();
-      r.setStart(n, m.index + head);
-      r.setEnd(n, m.index + len);
-      ranges.push(r);
-    }
-  }
-  const hl = new win.Highlight(...ranges);
-  hl.priority = 0;
-  reg.set('m-fix', hl);
-}
+const applyFixation = (contents) => applyFixationTo(contents, getSettings());
 
 onContents((c) => applyFixation(c));

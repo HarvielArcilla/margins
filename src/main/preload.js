@@ -31,6 +31,13 @@ contextBridge.exposeInMainWorld('api', {
     captureRaw: call('window:capture-raw'),
   },
   bookCache: { get: call('bookcache:get'), set: call('bookcache:set') },
+  pager: {
+    render: call('pager:render'),
+    // used by the offscreen pager page itself
+    hello: () => ipcRenderer.send('pager:hello'),
+    done: (msg) => ipcRenderer.send('pager:done', msg),
+    onRender: (fn) => ipcRenderer.on('pager:render', (_e, spec) => fn(spec)),
+  },
   info: call('app:info'),
   graphics: { get: call('graphics:get'), set: call('graphics:set') },
   relaunch: call('app:relaunch'),

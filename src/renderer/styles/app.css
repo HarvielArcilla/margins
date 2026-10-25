@@ -323,11 +323,12 @@ body.focus-mode #reader-topbar, body.focus-mode #reader-footer { opacity: 0 !imp
 
 /* ---------- page-turn layers ---------- */
 /* Above the night light and dimmer (z 30): the snapshot already has them. */
-.turn-snap { position: absolute; left: 0; top: 0; z-index: 31; pointer-events: none; transform-origin: center; }
+.turn-under { position: absolute; left: 0; top: 0; z-index: 31; pointer-events: none; transform-origin: center; }
+.turn-snap { position: absolute; left: 0; top: 0; z-index: 32; pointer-events: none; transform-origin: center; }
 .turn-snap.shadowed { box-shadow: 18px 0 40px rgba(0,0,0,.28); }
-.curl-shadow { position: absolute; left: 0; top: 0; z-index: 32; pointer-events: none; }
-.curl-canvas { position: absolute; left: 0; top: 0; z-index: 33; pointer-events: none; }
-.turn-edge-line { position: absolute; top: 0; bottom: 0; left: -36px; width: 36px; z-index: 34; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(0,0,0,.2)); }
+.curl-shadow { position: absolute; left: 0; top: 0; z-index: 33; pointer-events: none; }
+.curl-canvas { position: absolute; left: 0; top: 0; z-index: 34; pointer-events: none; }
+.turn-edge-line { position: absolute; top: 0; bottom: 0; left: -36px; width: 36px; z-index: 35; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(0,0,0,.2)); }
 
 /* ---------- paper ---------- */
 #paper { position: absolute; inset: 0; z-index: 0; pointer-events: none; background-repeat: repeat; background-position: 0 0; }
