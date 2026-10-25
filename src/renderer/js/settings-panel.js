@@ -1,0 +1,363 @@
+// The reading settings drawer (Aa). Every control writes straight to the
+// settings store, and the open book restyles live.
+import { $, setChildren, el, icon, iconButton, toast, promptDialog, confirmDialog, debounce } from './ui.js';
+import { getSettings, setSettings, setBookScope, bookScopeActive, resetSettings, DEFAULTS } from './settings.js';
+import { allThemes, isDark, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.js';
+import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
+import { BUILTIN_TEMPLATES, snapshotTemplate, templatePatch } from './templates.js';
+import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
+import { voices } from './tts.js';
+import { R } from './reader.js';
+
+let tab = 'text';
+let fontQuery = '';
+
+export function isOpen() { return document.body.classList.contains('settings-open'); }
+export function open(which) { if (which) tab = which; document.body.classList.add('settings-open'); render(); }
+export function close() { document.body.classList.remove('settings-open'); }
+export function toggle(which) { if (isOpen() && (!which || which === tab)) close(); else open(which); }
+
+const TABS = [
+  ['text', 'Text', 'aa'],
+  ['spacing', 'Spacing', 'ruler'],
+  ['theme', 'Colors', 'sun'],
+  ['page', 'Pages', 'layers'],
+  ['controls', 'Turning', 'keyboard'],
+  ['templates', 'Templates', 'star'],
+  ['more', 'More', 'sparkle'],
+];
+
+export function render() {
+  if (!isOpen()) return;
+  const root = $('#settings');
+  const scroll = root.querySelector('.set-body')?.scrollTop || 0;
+  const body = el('div.set-body', ({
+    text: textTab, spacing: spacingTab, theme: themeTab, page: pageTab,
+    controls: controlsTab, templates: templatesTab, more: moreTab,
+  })[tab]());
+  setChildren(root, 
+    el('div.set-head',
+      el('h2', 'Reading settings'),
+      iconButton('x', 'Close', close)),
+    R.open ? el('div.scope',
+      el('span', 'Applies to'),
+      el('div.seg',
+        el('button', { class: !bookScopeActive() ? 'on' : '', onclick: () => { setBookScope(false); render(); } }, 'All books'),
+        el('button', { class: bookScopeActive() ? 'on' : '', onclick: () => { setBookScope(true); render(); } }, 'This book'))) : null,
+    el('div.set-tabs', TABS.map(([id, label, ic]) =>
+      el('button.set-tab', { class: `set-tab ${tab === id ? 'on' : ''}`, title: label, onclick: () => { tab = id; render(); } }, icon(ic, 17), el('span', label)))),
+    body);
+  body.scrollTop = scroll;
+}
+
+// ---------- control builders ----------
+function range(key, label, min, max, step, fmt = (v) => v, hint) {
+  const s = getSettings();
+  const out = el('output', fmt(s[key]));
+  const input = el('input', {
+    type: 'range', min, max, step, value: s[key],
+    oninput: (e) => { const v = +e.target.value; out.textContent = fmt(v); setSettings({ [key]: v }); },
+  });
+  const nudge = (d) => { const v = Math.round((Math.min(max, Math.max(min, +input.value + d * step))) * 1000) / 1000; input.value = v; out.textContent = fmt(v); setSettings({ [key]: v }); };
+  return el('div.ctl',
+    el('div.ctl-top', el('label', label), el('div.ctl-val',
+      el('button.step', { title: 'Less', onclick: () => nudge(-1) }, '−'), out,
+      el('button.step', { title: 'More', onclick: () => nudge(1) }, '+'))),
+    input, hint ? el('p.hint', hint) : null);
+}
+
+function select(key, label, options, hint) {
+  const s = getSettings();
+  return el('div.ctl',
+    el('label', label),
+    el('select.input', { onchange: (e) => { setSettings({ [key]: coerce(e.target.value, s[key]) }); render(); } },
+      options.map(([v, l]) => el('option', { value: v, selected: String(s[key]) === String(v) }, l))),
+    hint ? el('p.hint', hint) : null);
+}
+
+function seg(key, label, options) {
+  const s = getSettings();
+  return el('div.ctl',
+    el('label', label),
+    el('div.seg', options.map(([v, l, ic]) => el('button', {
+      class: String(s[key]) === String(v) ? 'on' : '', title: l,
+      onclick: () => { setSettings({ [key]: coerce(v, s[key]) }); render(); },
+    }, ic ? icon(ic, 15) : null, ic && !l ? null : l))));
+}
+
+function toggleCtl(key, label, hint) {
+  const s = getSettings();
+  return el('label.ctl.toggle',
+    el('span', el('span.t-label', label), hint ? el('span.hint', hint) : null),
+    el('input', { type: 'checkbox', checked: !!s[key], onchange: (e) => { setSettings({ [key]: e.target.checked }); render(); } }),
+    el('span.switch'));
+}
+
+const coerce = (v, like) => (typeof like === 'number' ? +v : typeof like === 'boolean' ? v === 'true' || v === true : v);
+const px = (v) => `${v}px`;
+const em = (v) => `${(+v).toFixed(2)}em`;
+const pct = (v) => `${v}%`;
+
+function section(title, ...kids) { return el('section.set-sec', el('h3', title), kids); }
+
+// ---------- tabs ----------
+function textTab() {
+  const s = getSettings();
+  return [
+    section('Font', fontPicker()),
+    section('Size & weight',
+      range('fontSize', 'Font size', 10, 48, 1, px),
+      range('fontWeight', 'Weight', 300, 700, 50, (v) => v),
+      range('boldWeight', 'Bold weight', 500, 900, 100, (v) => v),
+      range('textShadow', 'Thicken strokes', 0, 0.8, 0.05, (v) => (v ? `${v}px` : 'Off'), 'Adds weight to thin fonts, nice on dark themes.')),
+    section('Headings',
+      select('headingFont', 'Heading font', [['same', 'Same as body'], ['publisher', 'Publisher’s choice'],
+        ...listFonts().filter((f) => f.category !== 'system').map((f) => [f.name, f.name])]),
+      range('headingScale', 'Heading size', 0.6, 1.6, 0.05, (v) => `${Math.round(v * 100)}%`),
+      toggleCtl('smallCapsHeadings', 'Small caps headings'),
+      toggleCtl('dropCaps', 'Drop caps', 'A large initial letter at the start of chapters.')),
+    section('Details',
+      select('publisherStyles', 'Publisher styles', [['respect', 'Respect — only change colours and size'], ['mix', 'Mix — my fonts and spacing for body text'], ['override', 'Override — force my settings everywhere']]),
+      toggleCtl('ligatures', 'Ligatures (fi, fl)'),
+      toggleCtl('oldStyleNumbers', 'Old-style numerals'),
+      select('fontSmoothing', 'Font smoothing (macOS)', [['auto', 'System default'], ['antialiased', 'Thinner (antialiased)'], ['subpixel', 'Subpixel']])),
+    el('p.hint.center', `Previewing: ${s.font === 'publisher' ? 'publisher fonts' : s.font}`),
+  ];
+}
+
+function fontPicker() {
+  const s = getSettings();
+  const list = el('div.font-list');
+  const paint = () => {
+    const q = fontQuery.toLowerCase();
+    const fonts = [{ name: 'publisher', label: 'Publisher default', category: 'serif', blurb: 'Use the fonts the book came with' }, ...listFonts()]
+      .filter((f) => !q || (f.label || f.name).toLowerCase().includes(q) || (f.blurb || '').toLowerCase().includes(q));
+    const groups = new Map();
+    for (const f of fonts) { const c = f.name === 'publisher' ? '' : f.category; if (!groups.has(c)) groups.set(c, []); groups.get(c).push(f); }
+    setChildren(list, ...[...groups.entries()].flatMap(([cat, fs]) => [
+      cat ? el('div.font-cat', CATEGORIES[cat] || cat) : null,
+      ...fs.map((f) => el('button.font-row', {
+        class: `font-row ${s.font === f.name ? 'on' : ''}`,
+        onclick: () => { setSettings({ font: f.name }); s.font = f.name; paint(); },
+      },
+      el('span.font-name', { style: { fontFamily: f.name === 'publisher' ? 'inherit' : fontStack(f.name) } }, f.label || f.name),
+      f.blurb ? el('span.font-blurb', f.blurb) : null,
+      f.source === 'user' ? el('span.font-x', { title: 'Remove font', onclick: async (e) => { e.stopPropagation(); setUserFonts(await window.api.fonts.remove(f.id)); paint(); } }, icon('x', 13)) : null)),
+    ]));
+  };
+  paint();
+  return el('div',
+    el('input.input.small', { placeholder: `Search ${listFonts().length} fonts…`, value: fontQuery, type: 'search', oninput: debounce((e) => { fontQuery = e.target.value; paint(); }, 100) }),
+    list,
+    el('div.row-btns',
+      el('button.btn.small', { onclick: async () => { setUserFonts(await window.api.fonts.import()); render(); } }, icon('plus', 14), 'Add font files'),
+      el('button.btn.small', {
+        disabled: systemFontsLoaded(),
+        onclick: async () => { const f = await loadSystemFonts(); toast(f.length ? `Found ${f.length} installed fonts` : 'Could not read installed fonts'); render(); },
+      }, icon('search', 14), systemFontsLoaded() ? 'Installed fonts listed' : 'Show installed fonts')));
+}
+
+function spacingTab() {
+  return [
+    section('Lines & letters',
+      range('lineHeight', 'Line spacing', 1, 3, 0.05, (v) => (+v).toFixed(2)),
+      range('letterSpacing', 'Letter spacing', -0.05, 0.25, 0.005, em),
+      range('wordSpacing', 'Word spacing', -0.1, 0.6, 0.01, em)),
+    section('Paragraphs',
+      range('paragraphSpacing', 'Space between paragraphs', 0, 3, 0.05, em),
+      range('paragraphIndent', 'First-line indent', 0, 5, 0.1, em),
+      seg('textAlign', 'Alignment', [['publisher', 'Book'], ['left', 'Left'], ['justify', 'Justify'], ['center', 'Center']]),
+      toggleCtl('hyphenation', 'Hyphenation', 'Splits long words at line ends — smoother justified text.')),
+    section('Margins & width',
+      range('marginH', 'Side margins', 0, 240, 4, px),
+      range('marginV', 'Top & bottom margins', 0, 160, 4, px),
+      range('maxLineWidth', 'Maximum line length', 0, 1400, 10, (v) => (v ? `${v}px` : 'No limit'), 'Long lines are tiring; 550–750px is comfortable for most fonts.'),
+      range('columnGap', 'Gap between pages', 0, 160, 4, px)),
+    section('Reset', el('button.btn.small', {
+      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'textAlign', 'hyphenation', 'marginH', 'marginV', 'maxLineWidth', 'columnGap']); render(); },
+    }, 'Reset spacing to defaults')),
+  ];
+}
+
+function themeTab() {
+  const s = getSettings();
+  const themes = allThemes(s);
+  const light = themes.filter((t) => !isDark(t)), dark = themes.filter((t) => isDark(t));
+  const card = (t) => el('button.theme-card', {
+    class: `theme-card ${s.theme === t.id ? 'on' : ''}`,
+    style: { background: t.bg, color: t.fg, '--tl': t.link },
+    title: t.name,
+    onclick: () => { setSettings({ theme: t.id }); render(); },
+  }, el('span.theme-aa', 'Aa'), el('span.theme-name', t.name),
+  t.custom ? el('span.theme-x', { title: 'Delete theme', onclick: (e) => { e.stopPropagation(); setSettings({ customThemes: s.customThemes.filter((x) => x.id !== t.id), theme: s.theme === t.id ? 'paper' : s.theme }); render(); } }, icon('x', 12)) : null);
+  return [
+    section('Light', el('div.theme-grid', light.map(card))),
+    section('Dark', el('div.theme-grid', dark.map(card))),
+    section('Make your own', customThemeEditor()),
+    section('Atmosphere',
+      range('brightness', 'Brightness', 30, 100, 1, pct, 'Dims the page beyond your screen’s minimum.'),
+      range('warmth', 'Warmth (night light)', 0, 100, 1, pct),
+      range('paperTexture', 'Paper texture', 0, 100, 1, pct),
+      range('vignette', 'Vignette', 0, 100, 1, pct),
+      toggleCtl('keepPublisherColors', 'Keep the book’s own text colours'),
+      select('autoDarkTheme', 'When the system is in dark mode use', [['', 'Same theme (off)'], ...dark.map((t) => [t.id, t.name])])),
+    section('Images',
+      range('dimImages', 'Dim images', 0, 60, 1, pct),
+      toggleCtl('invertImagesInDark', 'Invert images on dark themes', 'Good for black-on-white diagrams.'),
+      seg('imageFit', 'Image size', [['contain', 'Fit page'], ['width', 'Full width'], ['original', 'Original']])),
+  ];
+}
+
+function customThemeEditor() {
+  const s = getSettings();
+  const base = allThemes(s).find((t) => t.id === s.theme) || allThemes(s)[0];
+  const draft = { bg: base.bg, fg: base.fg, link: base.link, accent: base.accent || base.link };
+  const preview = el('div.theme-preview', el('strong', 'The quick brown fox'), ' jumps over the ', el('a', 'lazy dog'), '.');
+  const paint = () => { Object.assign(preview.style, { background: draft.bg, color: draft.fg }); preview.querySelector('a').style.color = draft.link; };
+  paint();
+  const picker = (k, label) => el('label.color-field', el('input', { type: 'color', value: draft[k], oninput: (e) => { draft[k] = e.target.value; paint(); } }), label);
+  return el('div',
+    preview,
+    el('div.color-fields', picker('bg', 'Page'), picker('fg', 'Text'), picker('link', 'Links'), picker('accent', 'Accent')),
+    el('button.btn.small', {
+      onclick: async () => {
+        const name = await promptDialog('Save colour scheme', 'Name', 'My theme');
+        if (!name) return;
+        const t = { id: `custom-${Date.now().toString(36)}`, name, ...draft };
+        setSettings({ customThemes: [...s.customThemes, t], theme: t.id }, { scope: 'global' });
+        setSettings({ theme: t.id });
+        render();
+      },
+    }, icon('plus', 14), 'Save as new theme'));
+}
+
+function pageTab() {
+  const s = getSettings();
+  return [
+    section('Layout',
+      seg('flow', 'Reading mode', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
+      s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
+      s.flow === 'paginated' && s.spread === 'auto' ? range('spreadThreshold', 'Show two pages when the window is wider than', 600, 2400, 20, px) : null),
+    section('Page turn animation',
+      el('div.anim-grid', ANIMATIONS.map((a) => el('button.anim-card', {
+        class: `anim-card ${s.pageAnimation === a.id ? 'on' : ''}`,
+        onclick: () => { setSettings({ pageAnimation: a.id }); render(); },
+      }, el('span', { class: `anim-demo demo-${a.id}` }, el('i')), el('span', a.name)))),
+      range('animationMs', 'Animation speed', 100, 900, 20, (v) => `${v} ms`),
+      s.flow !== 'paginated' ? el('p.hint', 'Animations apply in Pages mode.') : null),
+    section('Header & footer',
+      toggleCtl('showHeader', 'Show top bar'),
+      toggleCtl('showFooter', 'Show footer'),
+      toggleCtl('hideChromeWhileReading', 'Hide bars while reading', 'Move the mouse to the top or bottom edge, or click the middle, to bring them back.'),
+      toggleCtl('showScrubber', 'Progress scrubber in footer'),
+      select('footerLeft', 'Footer left', [['chapter', 'Chapter title'], ['title', 'Book title'], ['clock', 'Clock'], ['none', 'Nothing']]),
+      select('footerCenter', 'Footer middle', [['page', 'Page in chapter'], ['chapter-left', 'Time left in chapter'], ['book-left', 'Time left in book'], ['percent', 'Percent'], ['none', 'Nothing']]),
+      select('footerRight', 'Footer right', [['percent', 'Percent'], ['book-left', 'Time left in book'], ['chapter-left', 'Time left in chapter'], ['clock', 'Clock'], ['page', 'Page in chapter'], ['none', 'Nothing']])),
+  ];
+}
+
+function controlsTab() {
+  const s = getSettings();
+  return [
+    section('Click & tap zones',
+      zoneDiagram(s.clickZones, s.invertZones),
+      select('clickZones', 'Layout', ZONE_LAYOUTS.map((z) => [z.id, z.name])),
+      toggleCtl('invertZones', 'Swap back and forward zones', 'For left-handed one-hand reading.'),
+      toggleCtl('doubleTapFullscreen', 'Double-click for full screen')),
+    section('Keyboard & remotes',
+      toggleCtl('keyArrows', 'Arrow keys', '← → turn pages; ↑ ↓ move the reading ruler when it is on.'),
+      toggleCtl('keySpace', 'Space bar', 'Shift+Space goes back.'),
+      toggleCtl('keyPage', 'Page Up / Page Down', 'Most Bluetooth page-turner pedals and presentation clickers send these.'),
+      toggleCtl('keyVim', 'Vim keys (h j k l)'),
+      toggleCtl('keyWasd', 'Gamer keys (W A S D)'),
+      toggleCtl('keyMedia', 'Media & volume keys', 'Phone-style clickers often send volume up/down.'),
+      toggleCtl('gamepad', 'Game controllers', 'Bumpers, triggers, D-pad, A/B and the left stick turn pages; Start shows the menu.')),
+    section('Mouse & trackpad',
+      toggleCtl('wheelTurns', 'Mouse wheel turns pages'),
+      toggleCtl('wheelInvert', 'Reverse wheel direction'),
+      toggleCtl('swipeTurns', 'Two-finger swipe & touch swipe')),
+    section('Hands-free',
+      range('autoTurnSeconds', 'Auto-turn every', 3, 300, 1, (v) => `${v} s`, 'Pages mode. Start it with the timer button or P.'),
+      range('autoScrollSpeed', 'Auto-scroll speed', 5, 400, 5, (v) => `${v} px/s`, 'Scroll modes. [ and ] change speed while running.'),
+      toggleCtl('autoPauseOnInteract', 'Pause auto-scroll when I turn a page myself')),
+  ];
+}
+
+function zoneDiagram(layout, invert) {
+  const grid = el('div.zone-diagram');
+  const cols = 24, rows = 16;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let a = zoneAction(layout, (c + 0.5) / cols, (r + 0.5) / rows);
+      if (invert && (a === 'next' || a === 'prev')) a = a === 'next' ? 'prev' : 'next';
+      grid.append(el('i', { class: `z-${a}` }));
+    }
+  }
+  return el('div.zone-wrap', grid, el('div.zone-legend', el('span.z-prev', 'Back'), el('span.z-menu', 'Menu'), el('span.z-next', 'Forward')));
+}
+
+function templatesTab() {
+  const s = getSettings();
+  const apply = (t) => { setSettings(templatePatch(t)); toast(`Applied “${t.name}”`); render(); };
+  const card = (t) => {
+    const th = allThemes(s).find((x) => x.id === t.settings.theme) || allThemes(s)[0];
+    return el('div.tpl-card', { onclick: () => apply(t) },
+      el('div.tpl-preview', { style: { background: th.bg, color: th.fg, fontFamily: fontStack(t.settings.font) || 'serif', lineHeight: t.settings.lineHeight || 1.5, textAlign: t.settings.textAlign === 'justify' ? 'justify' : 'left' } },
+        el('b', t.name), el('span', ' — The lamp threw a soft circle of light across the open page.')),
+      el('div.tpl-meta', el('span', t.blurb),
+        t.user ? el('button.link-btn.danger', { onclick: async (e) => { e.stopPropagation(); if (await confirmDialog('Delete template?', t.name, 'Delete', true)) { setSettings({ userTemplates: s.userTemplates.filter((x) => x.id !== t.id) }, { scope: 'global' }); render(); } } }, 'Delete') : null));
+  };
+  return [
+    section('Your templates',
+      el('button.btn.small', {
+        onclick: async () => {
+          const name = await promptDialog('Save current look as a template', 'Name', 'My reading setup');
+          if (!name) return;
+          setSettings({ userTemplates: [...s.userTemplates, snapshotTemplate(getSettings(), name)] }, { scope: 'global' });
+          render();
+        },
+      }, icon('plus', 14), 'Save current settings as template'),
+      s.userTemplates.length ? el('div.tpl-grid', s.userTemplates.map(card)) : el('p.hint', 'Templates capture fonts, spacing, colours, layout and page turning.')),
+    section('Built in', el('div.tpl-grid', BUILTIN_TEMPLATES.map(card))),
+  ];
+}
+
+function moreTab() {
+  const s = getSettings();
+  const vs = voices();
+  return [
+    section('Reading ruler',
+      seg('ruler', 'Ruler', [['off', 'Off'], ['line', 'Line'], ['band', 'Band'], ['spotlight', 'Spotlight']]),
+      s.ruler !== 'off' ? range('rulerLines', 'Ruler height', 1, 8, 1, (v) => `${v} line${v > 1 ? 's' : ''}`) : null,
+      s.ruler !== 'off' ? range('rulerOpacity', 'Ruler strength', 5, 90, 1, pct) : null),
+    section('Fixation emphasis',
+      toggleCtl('fixation', 'Emphasise word beginnings', 'Bionic-style: the end of each word is dimmed so your eyes land on its start.'),
+      s.fixation ? range('fixationStrength', 'Strength', 0, 100, 1, pct) : null),
+    section('Highlights',
+      el('div.ctl', el('label', 'Default colour'), el('div.pop-colors', HIGHLIGHT_COLORS.map((c) => el('button.swatch', {
+        class: `swatch ${s.highlightColor === c.id ? 'on' : ''}`, style: { '--c': c.hex }, title: c.name,
+        onclick: () => { setSettings({ highlightColor: c.id }, { scope: 'global' }); render(); },
+      })))),
+      select('highlightStyle', 'Default style', HIGHLIGHT_STYLES.map((x) => [x.id, x.name])),
+      range('highlightOpacity', 'Highlight strength', 10, 90, 1, pct),
+      toggleCtl('quickHighlight', 'Highlight as soon as I select', 'Hold Alt (Option) while selecting to skip it.')),
+    section('Read aloud',
+      el('div.ctl', el('label', 'Voice'), el('select.input', { onchange: (e) => setSettings({ ttsVoice: e.target.value }) },
+        el('option', { value: '' }, 'System default'),
+        vs.map((v) => el('option', { value: v.name, selected: s.ttsVoice === v.name }, `${v.name} (${v.lang})`)))),
+      range('ttsRate', 'Speed', 0.5, 3, 0.05, (v) => `${(+v).toFixed(2)}×`),
+      range('ttsPitch', 'Pitch', 0.5, 1.5, 0.05, (v) => (+v).toFixed(2))),
+    section('Pace',
+      range('defaultWpm', 'Starting reading speed', 100, 600, 10, (v) => `${v} wpm`, 'Used for time-left estimates until Marginalia has measured your own pace.')),
+    section('Reset',
+      el('button.btn.small.danger', {
+        onclick: async () => {
+          if (!(await confirmDialog('Reset all reading settings?', 'Your custom themes and templates are kept.', 'Reset', true))) return;
+          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'userTemplates', 'customHighlightColors'].includes(k)));
+          render();
+        },
+      }, 'Reset everything to defaults')),
+  ];
+}
+
+document.addEventListener('voices-changed', () => { if (tab === 'more') render(); });

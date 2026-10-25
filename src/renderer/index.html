@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self' app: blob: data:; script-src 'self' app:; style-src 'self' 'unsafe-inline' app: blob:; img-src 'self' app: blob: data:; font-src 'self' app: blob: data:; frame-src 'self' blob: app:; connect-src 'self' app: blob: data:; media-src 'self' app: blob: data:">
+  <title>Marginalia</title>
+  <link rel="stylesheet" href="styles/app.css">
+  <script src="vendor/jszip.min.js"></script>
+  <script src="vendor/epub.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body data-view="library">
+  <!-- Library & stats top bar -->
+  <header id="lib-topbar" class="topbar">
+    <div class="brand"><span class="brand-mark">M</span>Marginalia</div>
+    <div class="spacer"></div>
+    <button class="icon-btn labeled" id="lib-btn" title="Library"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5zM4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></span><span>Library</span></button>
+    <button class="icon-btn labeled" id="stats-btn" title="Reading stats"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18M7 16v-5M12 16V8M17 16v-8"/></svg></span><span>Stats</span></button>
+    <button class="icon-btn labeled" id="lib-settings-btn" title="Appearance"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></span><span>Look</span></button>
+    <button class="btn primary small" id="import-btn"><span class="icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>Import</button>
+  </header>
+
+  <main id="library-view" class="page-view"></main>
+  <main id="stats-view" class="page-view"></main>
+
+  <!-- Reader -->
+  <section id="reader-view" class="immersive">
+    <header id="reader-topbar" class="topbar">
+      <div class="tb-group">
+        <button class="icon-btn" id="back-btn" title="Library (Ctrl+L)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span></button>
+        <button class="icon-btn" id="toc-btn" title="Contents (T)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span></button>
+        <button class="icon-btn" id="notes-btn" title="Highlights & notes (N)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg></span></button>
+      </div>
+      <div class="tb-center">
+        <button id="reader-title" class="title-btn" title="Book info (I)"></button>
+        <div id="reader-chapter" class="muted"></div>
+      </div>
+      <div class="tb-group">
+        <span id="session-time" class="session-time" title="Active reading time this session"></span>
+        <button class="icon-btn" id="search-btn" title="Search (/)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></span></button>
+        <button class="icon-btn" id="tts-btn" title="Read aloud (V)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4zM15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg></span></button>
+        <button class="icon-btn" id="auto-btn" title="Auto-turn / auto-scroll (P)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/></svg></span></button>
+        <button class="icon-btn" id="bm-btn" title="Bookmark (B)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg></span></button>
+        <button class="icon-btn" id="aa-btn" title="Reading settings (,)"><span class="icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19l5-13 5 13M5 14h6M15.5 13.5c.6-1.2 1.6-1.8 3-1.8 1.9 0 2.9 1 2.9 2.8V19M21.4 15.8c-4.2 0-6.4.8-6.4 1.9 0 .9.8 1.5 1.9 1.5 2 0 4.5-1.2 4.5-3.4"/></svg></span></button>
+        <button class="icon-btn" id="focus-btn" title="Focus mode (Z)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/></svg></span></button>
+        <button class="icon-btn" id="fs-btn" title="Full screen (F)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></span></button>
+      </div>
+    </header>
+
+    <div id="stage">
+      <div id="viewer"><div id="book"></div></div>
+      <div id="ruler" hidden></div>
+      <div id="reader-loading" hidden><div class="spinner"></div>Opening book…</div>
+    </div>
+
+    <!-- page atmosphere: texture, vignette, night light, dimmer -->
+    <div class="fx fx-texture"></div>
+    <div class="fx fx-vignette"></div>
+    <div class="fx fx-warm"></div>
+    <div class="fx fx-dim"></div>
+
+    <footer id="reader-footer">
+      <span id="footer-left"></span>
+      <span id="footer-center"></span>
+      <span id="footer-right"></span>
+      <div class="scrub">
+        <div class="scrub-track"><span id="scrub-fill"></span></div>
+        <input id="scrubber" type="range" min="0" max="1000" value="0" aria-label="Position in book">
+        <span id="scrub-tip"></span>
+      </div>
+    </footer>
+    <div id="auto-bar"></div>
+  </section>
+
+  <aside id="sidebar" aria-label="Book sidebar"></aside>
+  <aside id="settings" aria-label="Reading settings"></aside>
+  <div id="sel-popup" hidden></div>
+  <div id="drop-hint"><div>Drop ePub files to add them to your library</div></div>
+  <div id="modal-root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
