@@ -244,7 +244,7 @@ function pageTab() {
       seg('flow', 'Reading mode', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
       s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
       s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null,
-      s.flow === 'paginated' && s.spread !== 'none' ? toggleCtl('spineShadow', 'Crease between pages', 'A soft fold down the middle of two-page spreads, like an open book.') : null),
+      s.flow === 'paginated' && s.spread !== 'none' ? creaseCtls() : null),
     section('Page turn animation',
       el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
       el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
@@ -253,6 +253,7 @@ function pageTab() {
       s.flow !== 'paginated' ? el('p.hint', 'Animations apply in Pages mode.') : null),
     section('Header & footer',
       toggleCtl('showHeader', 'Show top bar'),
+      s.showHeader ? toggleCtl('solidHeader', 'Solid top bar', 'A bar the pages tuck under. Off, the page runs to the top of the window.') : null,
       toggleCtl('showFooter', 'Show footer'),
       toggleCtl('hideChromeWhileReading', 'Hide bars while reading', 'Move the mouse to the top or bottom edge, or click the middle, to bring them back.'),
       toggleCtl('showScrubber', 'Progress scrubber in footer'),
@@ -406,7 +407,15 @@ function paperPicker() {
     s.paperType === 'custom' ? el('div.row-btns', el('button.btn.small', {
       onclick: async () => { const name = await window.api.textures.import(); if (name) { setSettings({ paperImage: name, paperType: 'custom' }); render(); } },
     }, icon('upload', 13), 'Choose another image')) : null,
-    toggleCtl('spineShadow', 'Crease between pages', 'A soft fold down the middle when two pages are side by side.'),
+    creaseCtls(),
+  ];
+}
+
+function creaseCtls() {
+  const s = getSettings();
+  return [
+    toggleCtl('spineShadow', 'Crease between pages', 'A fold down the middle of two-page spreads, like an open book.'),
+    s.spineShadow ? range('creaseDepth', 'Crease depth', 5, 100, 1, (v) => (v < 25 ? 'Faint' : v < 50 ? 'Soft' : v < 75 ? 'Deep' : 'Very deep')) : null,
   ];
 }
 

@@ -165,6 +165,18 @@ function buildMenu() {
 
 // ---------- snapshots ----------
 // Returns { width, height, data (BGRA), order } or { error }.
+// BGRA → RGBA in place, here rather than in the page so the reader's own
+// thread never spends time on it.
+function toRGBA(data) {
+  if (data.byteOffset % 4) data = Buffer.from(data); // needs 4-byte alignment
+  const u = new Uint32Array(data.buffer, data.byteOffset, data.byteLength >> 2);
+  for (let i = 0; i < u.length; i++) {
+    const v = u[i];
+    u[i] = (v & 0xff00ff00) | ((v & 0xff) << 16) | ((v >>> 16) & 0xff);
+  }
+  return data;
+}
+
 function bitmapOf(img, rect) {
   if (!img || img.isEmpty()) return { error: 'empty capture' };
   const data = img.toBitmap();
@@ -180,13 +192,13 @@ function bitmapOf(img, rect) {
   for (const [w, h] of candidates) {
     for (const dw of [0, -1, 1]) {
       const ww = w + dw;
-      if (ww > 0 && px % ww === 0 && Math.abs(px / ww - h) <= 1) return { width: ww, height: px / ww, data, order: 'bgra' };
+      if (ww > 0 && px % ww === 0 && Math.abs(px / ww - h) <= 1) return { width: ww, height: px / ww, data: toRGBA(data), order: 'rgba' };
     }
   }
   // last resort: resample to the requested size in points
   const r = img.resize({ width: Math.round(rect.width), height: Math.round(rect.height) });
   const d = r.toBitmap();
-  return { width: Math.round(rect.width), height: d.length / 4 / Math.round(rect.width), data: d, order: 'bgra' };
+  return { width: Math.round(rect.width), height: d.length / 4 / Math.round(rect.width), data: toRGBA(d), order: 'rgba' };
 }
 
 async function rawCapture(wc, rect) {

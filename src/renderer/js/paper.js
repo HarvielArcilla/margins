@@ -214,6 +214,11 @@ export function apply(s, dark) {
   }
   const rv = $('#reader-view');
   rv.classList.toggle('spine-shadow', !!s.spineShadow);
+  // deeper creases are darker and a little wider
+  const depth = Math.max(0, Math.min(100, s.creaseDepth ?? 45)) / 100;
+  rv.style.setProperty('--crease', depth.toFixed(3));
+  rv.style.setProperty('--crease-w', `${Math.round(70 + depth * 110)}px`);
+  rv.classList.toggle('solid-header', s.solidHeader !== false && s.showHeader !== false);
 }
 
 // Where the spine is, for the gutter shadow in two-page spreads.

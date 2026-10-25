@@ -6,7 +6,7 @@ export const TEMPLATE_KEYS = [
   'font', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing',
   'paragraphIndent', 'textAlign', 'wordBreaks', 'publisherStyles', 'headingFont', 'headingScale', 'dropCaps',
   'smallCapsHeadings', 'textShadow', 'flow', 'spread', 'marginH', 'marginV', 'lineLength', 'columnGap',
-  'theme', 'brightness', 'warmth', 'paperTexture', 'paperType', 'spineShadow', 'vignette', 'pageAnimation', 'animationMs', 'ruler',
+  'theme', 'brightness', 'warmth', 'paperTexture', 'paperType', 'spineShadow', 'creaseDepth', 'vignette', 'pageAnimation', 'animationMs', 'ruler',
   'rulerLines', 'fixation', 'fixationStrength', 'dimImages',
 ];
 

@@ -47,6 +47,7 @@ export const DEFAULTS = {
   paperScale: 1,
   paperImage: '',
   spineShadow: true,
+  creaseDepth: 45, // 0-100: how deep the crease between two pages looks
   vignette: 0, // 0-100
   autoDarkTheme: '', // theme used when the OS is in dark mode ('' = off)
   lastLightTheme: 'paper', // for the C (day/night) shortcut
@@ -74,6 +75,7 @@ export const DEFAULTS = {
 
   // Chrome
   showHeader: true,
+  solidHeader: true,
   showFooter: true,
   footerLeft: 'chapter', // chapter | title | time | none
   footerCenter: 'page', // page | chapter-left | book-left | percent | none

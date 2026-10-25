@@ -32,8 +32,6 @@ function applyLook() {
   }
   paper.apply(s, isDark(theme));
   paper.placeSpine(L, stage.left);
-  const sp = $('#spine');
-  Object.assign(sp.style, { top: `${stage.top}px`, bottom: `${win.H - stage.top - stage.H}px` });
   Object.assign($('#stage').style, { left: `${stage.left}px`, top: `${stage.top}px`, width: `${stage.W}px`, height: `${stage.H}px`, bottom: 'auto', right: 'auto' });
   Object.assign($('#book').style, { position: 'absolute', left: `${L.padX}px`, top: `${L.padY}px`, width: `${L.width}px`, height: `${L.height}px` });
   document.body.dataset.flow = s.flow;
@@ -84,10 +82,27 @@ async function render(req) {
   applyLook();
   await ensureBook(req.bookId);
   await ensureRendition();
+  // A freshly loaded section can still change size as its fonts and images
+  // arrive, leaving epub.js on the wrong page: check and go again.
+  // epub.js can land one page early when asked for a page that starts in
+  // the middle of a paragraph (or before late fonts settle): step to it.
+  const at = () => rendition.currentLocation()?.start?.cfi;
   await rendition.display(req.cfi);
-  if (req.which === 'next') await rendition.next();
-  else if (req.which === 'prev') await rendition.prev();
   await settle();
+  if (at() !== req.cfi) { await rendition.next(); await settle(); }
+  if (at() !== req.cfi) { await rendition.display(req.cfi); await settle(); }
+  if (at() !== req.cfi) { await rendition.prev(); await settle(); }
+  if (at() !== req.cfi) throw new Error(`could not find the page ${req.cfi} (at ${at()})`);
+  if (req.which === 'next' || req.which === 'prev') {
+    const here = () => rendition.currentLocation();
+    const before = here()?.start?.cfi;
+    for (let tries = 0; tries < 3; tries++) {
+      await rendition[req.which]();
+      await settle();
+      const l = here();
+      if (l?.start?.cfi !== before || (req.which === 'next' ? l?.atEnd : l?.atStart)) break;
+    }
+  }
   const loc = rendition.currentLocation();
   window.api.pager.done({ id: req.id, ok: true, cfi: loc?.start?.cfi || null, atEnd: !!loc?.atEnd, atStart: !!loc?.atStart });
 }
