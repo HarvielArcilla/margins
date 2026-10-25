@@ -147,11 +147,12 @@ const even = (n) => 2 * Math.round(n / 2);
 // stage (the page area, which is also what page turns picture) shrinks.
 export function applyPageSize(s = getSettings()) {
   const rv = $('#reader-view');
-  const pw = Math.max(40, Math.min(100, s.pageWidth ?? 100));
-  const iy = Math.max(0, Math.min(200, s.pageInsetY ?? 0));
-  rv.style.setProperty('--desk-x', `${(100 - pw) / 2}%`);
-  rv.style.setProperty('--desk-y', `${iy}px`);
-  rv.classList.toggle('has-desk', pw < 100 || iy > 0);
+  const dx = Math.max(0, Math.min(25, s.deskX ?? 0));
+  const dy = Math.max(0, Math.min(15, s.deskY ?? 0));
+  // whole pixels, so the page's edges (and its pictures) stay crisp
+  rv.style.setProperty('--desk-x', `${Math.round((window.innerWidth * dx) / 100)}px`);
+  rv.style.setProperty('--desk-y', `${Math.round((window.innerHeight * dy) / 100)}px`);
+  rv.classList.toggle('has-desk', dx > 0 || dy > 0);
   if (s.deskColor) rv.style.setProperty('--desk', s.deskColor); else rv.style.removeProperty('--desk');
 }
 
@@ -262,6 +263,7 @@ const onWindowResize = debounce(async () => {
 window.addEventListener('resize', () => {
   if (!R.open) return;
   invalidateSnapshot();
+  applyPageSize();
   $('#reader-view').classList.add('resizing');
   onWindowResize();
 });
@@ -367,7 +369,7 @@ const onPointer = perFrame((y) => { if (!R.open) return; revealChromeNear(y); fo
 document.addEventListener('mousemove', (e) => onPointer(e.clientY));
 
 const RECREATE_KEYS = new Set(['flow']);
-const RELAYOUT_KEYS = new Set(['pageWidth', 'pageInsetY', 'spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
+const RELAYOUT_KEYS = new Set(['deskX', 'deskY', 'spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
   'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'publisherStyles', 'fontWeight', 'headingFont', 'headingScale',
   'imageFit', 'textAlign', 'wordBreaks', 'dropCaps', 'smallCapsHeadings']);
 

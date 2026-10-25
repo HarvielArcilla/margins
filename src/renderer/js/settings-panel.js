@@ -23,35 +23,84 @@ export function toggle(which) { if (isOpen() && (!which || which === tab)) close
 const TABS = [
   ['text', 'Text', 'aa'],
   ['spacing', 'Spacing', 'ruler'],
-  ['theme', 'Colors', 'sun'],
-  ['page', 'Pages', 'layers'],
+  ['theme', 'Colours', 'sun'],
+  ['page', 'Layout', 'layers'],
   ['controls', 'Turning', 'keyboard'],
   ['templates', 'Templates', 'star'],
   ['more', 'More', 'sparkle'],
 ];
+const TAB_FNS = () => ({
+  text: textTab, spacing: spacingTab, theme: themeTab, page: pageTab,
+  controls: controlsTab, templates: templatesTab, more: moreTab,
+});
+
+// ---------- search ----------
+// Typing in the search box shows matching settings from every tab at once,
+// each section labelled with the tab it lives in.
+let query = '';
+const searchInput = el('input.set-search-input', {
+  type: 'search', placeholder: 'Search settings', spellcheck: false,
+  oninput: (e) => { query = e.target.value; render(); },
+  onkeydown: (e) => { if (e.key === 'Escape' && query) { e.stopPropagation(); query = ''; searchInput.value = ''; render(); } },
+});
+
+function searchResults() {
+  const q = query.trim().toLowerCase();
+  const out = [];
+  const fns = TAB_FNS();
+  for (const [id, label] of TABS) {
+    const prev = tab;
+    tab = id; // some sections depend on the current tab
+    const secs = [fns[id]()].flat(Infinity).filter(Boolean);
+    tab = prev;
+    for (const sec of secs) {
+      if (!(sec instanceof Element)) continue;
+      const h3 = sec.querySelector(':scope > h3');
+      const title = h3?.textContent || '';
+      if (!title.toLowerCase().includes(q)) {
+        // keep only the controls whose own words match
+        let kept = 0;
+        for (const child of [...sec.children]) {
+          if (child === h3) continue;
+          const words = child.matches('.ctl')
+            ? [...child.querySelectorAll(':scope > label, .t-label, .hint, .ctl-top label')].map((x) => x.textContent).join(' ')
+            : child.textContent;
+          if (words.toLowerCase().includes(q)) kept++;
+          else child.remove();
+        }
+        if (!kept) continue;
+      }
+      if (h3) h3.prepend(el('span.set-crumb', label), ' › ');
+      out.push(sec);
+    }
+  }
+  return out.length ? out : [el('p.set-empty', `No settings match “${query.trim()}”.`)];
+}
 
 export function render() {
   if (!isOpen()) return;
   disposePreviews();
   const root = $('#settings');
   const scroll = root.querySelector('.set-body')?.scrollTop || 0;
-  const body = el('div.set-body', ({
-    text: textTab, spacing: spacingTab, theme: themeTab, page: pageTab,
-    controls: controlsTab, templates: templatesTab, more: moreTab,
-  })[tab]());
-  setChildren(root, 
+  const searching = !!query.trim();
+  const focused = document.activeElement === searchInput;
+  const caret = [searchInput.selectionStart, searchInput.selectionEnd];
+  const body = el('div.set-body', searching ? searchResults() : TAB_FNS()[tab]());
+  setChildren(root,
     el('div.set-head',
       el('h2', 'Reading settings'),
       iconButton('x', 'Close', close)),
+    el('label.set-search', icon('search', 15), searchInput),
     R.open ? el('div.scope',
       el('span', 'Applies to'),
       el('div.seg',
         el('button', { class: !bookScopeActive() ? 'on' : '', onclick: () => { setBookScope(false); render(); } }, 'All books'),
         el('button', { class: bookScopeActive() ? 'on' : '', onclick: () => { setBookScope(true); render(); } }, 'This book'))) : null,
-    el('div.set-tabs', TABS.map(([id, label, ic]) =>
-      el('button.set-tab', { class: `set-tab ${tab === id ? 'on' : ''}`, title: label, onclick: () => { tab = id; render(); } }, icon(ic, 17), el('span', label)))),
+    el('div.set-tabs', { class: `set-tabs ${searching ? 'dim' : ''}` }, TABS.map(([id, label, ic]) =>
+      el('button.set-tab', { class: `set-tab ${tab === id && !searching ? 'on' : ''}`, title: label, onclick: () => { tab = id; query = ''; searchInput.value = ''; render(); } }, icon(ic, 17), el('span', label)))),
     body);
-  body.scrollTop = scroll;
+  body.scrollTop = searching ? 0 : scroll;
+  if (focused) { searchInput.focus(); try { searchInput.setSelectionRange(...caret); } catch { /* fine */ } }
 }
 
 // ---------- control builders ----------
@@ -198,8 +247,8 @@ function themeTab() {
   }, el('span.theme-aa', 'Aa'), el('span.theme-name', t.name),
   t.custom ? el('span.theme-x', { title: 'Delete theme', onclick: (e) => { e.stopPropagation(); setSettings({ customThemes: s.customThemes.filter((x) => x.id !== t.id), theme: s.theme === t.id ? 'paper' : s.theme }); render(); } }, icon('x', 12)) : null);
   return [
-    section('Light', el('div.theme-grid', light.map(card))),
-    section('Dark', el('div.theme-grid', dark.map(card))),
+    section('Light themes', el('div.theme-grid', light.map(card))),
+    section('Dark themes', el('div.theme-grid', dark.map(card))),
     section('Make your own', customThemeEditor()),
     section('Paper', paperPicker()),
     section('Atmosphere',
@@ -240,32 +289,38 @@ function customThemeEditor() {
 
 function pageTab() {
   const s = getSettings();
+  const paged = s.flow === 'paginated';
   return [
-    section('Layout',
-      seg('flow', 'Reading mode', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
-      s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
-      s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null,
-      s.flow === 'paginated' && s.spread !== 'none' ? creaseCtls() : null),
-    section('Page size',
-      range('pageWidth', 'Page width', 50, 100, 1, (v) => (v >= 100 ? 'Whole window' : `${v}%`), 'Below 100%, the pages stop short of the window edges and sit on a desk.'),
-      range('pageInsetY', 'Desk above and below', 0, 120, 2, (v) => (v ? `${v}px` : 'None')),
-      s.pageWidth < 100 || s.pageInsetY > 0 ? deskColorCtl() : null),
-    section('Page turn animation',
-      el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
-      el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
-      range('animationMs', 'Animation speed', 100, 900, 20, (v) => (v < 200 ? 'Quick' : v < 400 ? 'Normal' : v < 650 ? 'Relaxed' : 'Slow')),
-      s.pageAnimation === 'curl' ? seg('curlFrom', 'Curl from', [['bottom', 'Bottom corner'], ['middle', 'Straight edge'], ['top', 'Top corner']]) : null,
-      s.pageAnimation === 'curl' ? el('p.hint', 'With Page curl you can also drag the page: press in the margin beside the text and pull toward the spine.') : null,
-      s.flow !== 'paginated' ? el('p.hint', 'Animations apply in Pages mode.') : null),
-    section('Header & footer',
+    section('Reading mode',
+      seg('flow', 'Show the book as', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
+      paged ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
+      paged && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null),
+    paged && s.spread !== 'none' ? section('Crease', creaseCtls()) : null,
+    section('Desk',
+      el('p.hint.lead', 'Room around the page, as if the book were lying on a desk.'),
+      range('deskX', 'Desk at the sides', 0, 25, 0.5, (v) => (v ? `${v}% each` : 'None')),
+      range('deskY', 'Desk above and below', 0, 15, 0.5, (v) => (v ? `${v}% each` : 'None')),
+      s.deskX > 0 || s.deskY > 0 ? deskColorCtl() : null),
+    section('Top & bottom bars',
       toggleCtl('showHeader', 'Show top bar'),
-      toggleCtl('showFooter', 'Show footer'),
-      toggleCtl('hideChromeWhileReading', 'Hide bars while reading', 'Move the mouse to the top or bottom edge, or click the middle, to bring them back.'),
-      toggleCtl('showScrubber', 'Progress scrubber in footer'),
-      select('footerLeft', 'Footer left', [['chapter', 'Chapter title'], ['title', 'Book title'], ['clock', 'Clock'], ['none', 'Nothing']]),
-      select('footerCenter', 'Footer middle', [['page', 'Page in chapter'], ['chapter-left', 'Time left in chapter'], ['book-left', 'Time left in book'], ['percent', 'Percent'], ['none', 'Nothing']]),
-      select('footerRight', 'Footer right', [['percent', 'Percent'], ['book-left', 'Time left in book'], ['chapter-left', 'Time left in chapter'], ['clock', 'Clock'], ['page', 'Page in chapter'], ['none', 'Nothing']])),
+      s.showHeader ? toggleCtl('hideChromeWhileReading', 'Hide buttons while reading', 'The bar and title stay. Move the mouse to the top edge, or click the middle of the page, to bring the buttons back.') : null,
+      toggleCtl('showFooter', 'Show bottom bar'),
+      s.showFooter ? toggleCtl('showScrubber', 'Progress scrubber') : null,
+      s.showFooter ? select('footerLeft', 'Bottom left', [['chapter', 'Chapter title'], ['title', 'Book title'], ['clock', 'Clock'], ['none', 'Nothing']]) : null,
+      s.showFooter ? select('footerCenter', 'Bottom middle', [['page', 'Page in chapter'], ['chapter-left', 'Time left in chapter'], ['book-left', 'Time left in book'], ['percent', 'Percent'], ['none', 'Nothing']]) : null,
+      s.showFooter ? select('footerRight', 'Bottom right', [['percent', 'Percent'], ['book-left', 'Time left in book'], ['chapter-left', 'Time left in chapter'], ['clock', 'Clock'], ['page', 'Page in chapter'], ['none', 'Nothing']]) : null),
   ];
+}
+
+function animationSection() {
+  const s = getSettings();
+  return section('Page turn animation',
+    el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
+    el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
+    range('animationMs', 'Animation speed', 100, 900, 20, (v) => (v < 200 ? 'Quick' : v < 400 ? 'Normal' : v < 650 ? 'Relaxed' : 'Slow')),
+    s.pageAnimation === 'curl' ? seg('curlFrom', 'Curl from', [['bottom', 'Bottom corner'], ['middle', 'Straight edge'], ['top', 'Top corner']]) : null,
+    s.pageAnimation === 'curl' ? el('p.hint', 'You can also drag the page: press in the margin beside the text and pull toward the spine.') : null,
+    s.flow !== 'paginated' ? el('p.hint', 'Animations apply when the book is shown as pages (Layout).') : null);
 }
 
 // ---------- animation previews ----------
@@ -412,7 +467,6 @@ function paperPicker() {
     s.paperType === 'custom' ? el('div.row-btns', el('button.btn.small', {
       onclick: async () => { const name = await window.api.textures.import(); if (name) { setSettings({ paperImage: name, paperType: 'custom' }); render(); } },
     }, icon('upload', 13), 'Choose another image')) : null,
-    creaseCtls(),
   ];
 }
 
@@ -445,6 +499,7 @@ function creaseCtls() {
 function controlsTab() {
   const s = getSettings();
   return [
+    animationSection(),
     section('Click & tap zones',
       zoneDiagram(s.clickZones, s.invertZones),
       select('clickZones', 'Layout', ZONE_LAYOUTS.map((z) => [z.id, z.name])),
@@ -512,13 +567,6 @@ function moreTab() {
   const s = getSettings();
   const vs = voices();
   return [
-    section('Reading ruler',
-      seg('ruler', 'Ruler', [['off', 'Off'], ['line', 'Line'], ['band', 'Band'], ['spotlight', 'Spotlight']]),
-      s.ruler !== 'off' ? range('rulerLines', 'Ruler height', 1, 8, 1, (v) => `${v} line${v > 1 ? 's' : ''}`) : null,
-      s.ruler !== 'off' ? range('rulerOpacity', 'Ruler strength', 5, 90, 1, pct) : null),
-    section('Fixation emphasis',
-      toggleCtl('fixation', 'Emphasise word beginnings', 'Bionic-style: the end of each word is dimmed so your eyes land on its start.'),
-      s.fixation ? range('fixationStrength', 'Strength', 0, 100, 1, pct) : null),
     section('Highlights',
       el('div.ctl', el('label', 'Default colour'), el('div.pop-colors', HIGHLIGHT_COLORS.map((c) => el('button.swatch', {
         class: `swatch ${s.highlightColor === c.id ? 'on' : ''}`, style: { '--c': c.hex }, title: c.name,
@@ -533,9 +581,16 @@ function moreTab() {
         vs.map((v) => el('option', { value: v.name, selected: s.ttsVoice === v.name }, `${v.name} (${v.lang})`)))),
       range('ttsRate', 'Speed', 0.5, 3, 0.05, (v) => `${(+v).toFixed(2)}×`),
       range('ttsPitch', 'Pitch', 0.5, 1.5, 0.05, (v) => (+v).toFixed(2))),
-    graphicsSection(),
+    section('Reading ruler',
+      seg('ruler', 'Ruler', [['off', 'Off'], ['line', 'Line'], ['band', 'Band'], ['spotlight', 'Spotlight']]),
+      s.ruler !== 'off' ? range('rulerLines', 'Ruler height', 1, 8, 1, (v) => `${v} line${v > 1 ? 's' : ''}`) : null,
+      s.ruler !== 'off' ? range('rulerOpacity', 'Ruler strength', 5, 90, 1, pct) : null),
+    section('Fixation emphasis',
+      toggleCtl('fixation', 'Emphasise word beginnings', 'Bionic-style: the end of each word is dimmed so your eyes land on its start.'),
+      s.fixation ? range('fixationStrength', 'Strength', 0, 100, 1, pct) : null),
     section('Pace',
       range('defaultWpm', 'Starting reading speed', 100, 600, 10, (v) => `${v} wpm`, 'Used for time-left estimates until Margins has measured your own pace.')),
+    graphicsSection(),
     section('Reset',
       el('button.btn.small.danger', {
         onclick: async () => {

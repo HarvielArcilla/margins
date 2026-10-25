@@ -48,8 +48,8 @@ export const DEFAULTS = {
   paperImage: '',
   spineShadow: true,
   creaseWidth: 50, // 0-100
-  pageWidth: 100, // % of the window the page (or spread) takes; the rest is desk
-  pageInsetY: 0, // px of desk above and below the page
+  deskX: 0, // desk at each side of the page, % of the window width (0-25)
+  deskY: 0, // desk above and below the page, % of the window height (0-15)
   deskColor: '', // '' = a shade darker than the page
   creaseDepth: 45, // 0-100: how dark the crease between two pages is
   vignette: 0, // 0-100
@@ -137,6 +137,12 @@ export async function loadSettings() {
   if ('hyphenation' in global) {
     if (!saved.wordBreaks) global.wordBreaks = global.hyphenation === false ? 'book' : 'auto';
     delete global.hyphenation;
+  }
+  // page size was briefly 'pageWidth' (%) and 'pageInsetY' (px)
+  if ('pageWidth' in saved || 'pageInsetY' in saved) {
+    if (!('deskX' in saved)) global.deskX = Math.max(0, (100 - (saved.pageWidth ?? 100)) / 2);
+    if (!('deskY' in saved)) global.deskY = Math.round(((saved.pageInsetY ?? 0) / 10)) ;
+    delete global.pageWidth; delete global.pageInsetY;
   }
   const renamed = { peel: 'curl', blur: 'fade' };
   if (renamed[global.pageAnimation]) global.pageAnimation = renamed[global.pageAnimation];

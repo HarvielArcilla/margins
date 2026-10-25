@@ -337,12 +337,14 @@ body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #
 #auto-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); transform: scaleX(0); transform-origin: left; z-index: 21; opacity: .7; }
 
 /* Immersive: bars fade while reading and come back on hover, M, or a middle click. */
-#reader-view.immersive:not(.show-chrome):not(.peek-top) #reader-topbar { opacity: 0; pointer-events: none; }
-#reader-view.immersive:not(.show-chrome):not(.peek-top) #reader-topbar .icon-btn { pointer-events: none; }
+/* While reading, the bar and the title stay; only the buttons step back
+   until the pointer comes near (or the middle of the page is clicked). */
+#reader-topbar .tb-group { transition: opacity .2s ease; }
+#reader-view.immersive:not(.show-chrome):not(.peek-top) #reader-topbar .tb-group { opacity: 0; pointer-events: none; }
 #reader-view.immersive:not(.show-chrome):not(.peek-bottom) .scrub { opacity: .6; }
 #reader-view.show-chrome #reader-topbar, #reader-view.peek-top #reader-topbar { box-shadow: inset 0 -1px 0 var(--border); }
-body.sidebar-open #reader-topbar, body.settings-open #reader-topbar { opacity: 1 !important; pointer-events: auto !important; }
-body.sidebar-open #reader-topbar .icon-btn, body.settings-open #reader-topbar .icon-btn { pointer-events: auto !important; }
+body.sidebar-open #reader-topbar, body.settings-open #reader-topbar,
+body.sidebar-open #reader-topbar .tb-group, body.settings-open #reader-topbar .tb-group { opacity: 1 !important; pointer-events: auto !important; }
 #reader-view.no-header #reader-topbar:not(:hover) { opacity: 0; }
 #reader-view.no-footer #reader-footer { display: none; }
 body.focus-mode #reader-topbar, body.focus-mode #reader-footer { opacity: 0 !important; pointer-events: none; }
@@ -421,18 +423,27 @@ body.sidebar-open #sidebar, body.settings-open #settings { transform: none; visi
 .search-hit mark { background: color-mix(in srgb, var(--accent) 30%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
 
 /* ---------- settings panel ---------- */
-.set-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 10px 4px 18px; }
+.set-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 10px 8px 18px; }
 .set-head h2 { font: 600 18px/1.2 var(--serif); margin: 0; letter-spacing: -.005em; }
-.scope { display: flex; align-items: center; gap: 10px; padding: 6px 16px 10px 18px; font-size: 12px; color: var(--muted); }
+.scope { display: flex; align-items: center; gap: 10px; padding: 0 14px 10px 18px; font-size: 12px; color: var(--muted); }
+.set-search { display: flex; align-items: center; gap: 8px; margin: 0 14px 10px; padding: 0 10px; height: 34px; border-radius: 10px; background: var(--panel-2); color: var(--muted); border: 1px solid transparent; transition: border-color .15s, background-color .15s; }
+.set-search:focus-within { border-color: color-mix(in srgb, var(--accent) 55%, transparent); background: var(--bg); }
+.set-search-input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font: 13px var(--ui); height: 100%; }
+.set-search-input::-webkit-search-cancel-button { cursor: pointer; }
+.set-tabs.dim .set-tab { opacity: .55; }
+.set-crumb { color: var(--accent); }
+.set-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 10px; }
 .scope .seg { flex: 1; }
-.set-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 8px 8px; border-bottom: 1px solid var(--border); }
+.set-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 8px 10px; border-bottom: 1px solid var(--border); }
 .set-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border: 0; background: none; border-radius: 8px; color: var(--muted); font-size: 10.5px; font-weight: 500; transition: background-color .15s, color .15s; }
 .set-tab:hover { background: var(--hover); color: var(--fg); }
 .set-tab.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
-.set-body { flex: 1; overflow: auto; padding: 4px 20px 64px; scrollbar-gutter: stable; }
-.set-sec { padding: 20px 0 8px; border-bottom: 1px solid var(--border); }
-.set-sec:last-child { border-bottom: 0; }
-.set-sec h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 16px; font-weight: 600; }
+.set-body { flex: 1; overflow: auto; padding: 12px 12px 64px; scrollbar-gutter: stable; background: color-mix(in srgb, var(--panel) 70%, var(--bg)); }
+:root[data-dark="1"] .set-body { background: color-mix(in srgb, var(--bg) 75%, #000); }
+/* each section is a card */
+.set-sec { padding: 14px 16px 0; margin-bottom: 10px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; }
+.set-sec h3 { font-size: 10.5px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin: 0 0 14px; font-weight: 600; }
+.set-sec > .hint.lead { margin: -6px 0 16px; }
 .ctl { display: grid; gap: 8px; margin-bottom: 18px; }
 .ctl > label, .ctl-top label { font-size: 13px; font-weight: 500; }
 .ctl-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -713,8 +724,8 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 .status-row .bad { color: #c8553d; }
 
 /* desk colour picker (Settings → Pages → Page size) */
-.desk-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.desk-swatch { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--c); padding: 0; cursor: pointer; position: relative; }
+.desk-row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.desk-swatch { width: 25px; height: 25px; border-radius: 8px; border: 1px solid var(--border); background: var(--c); padding: 0; cursor: pointer; position: relative; }
 .desk-swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
 .desk-swatch.auto { width: auto; padding: 0 10px; font-size: 12px; color: var(--fg); background: color-mix(in srgb, var(--bg) 86%, var(--fg)); }
 .desk-swatch.custom { background: conic-gradient(#e66, #ec6, #6c6, #6ce, #66e, #c6e, #e66); }

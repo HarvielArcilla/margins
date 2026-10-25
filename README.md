@@ -27,7 +27,8 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Build and save your own schemes
 - Paper textures under the page — fine grain, cotton, laid, linen, vellum, recycled, newsprint, parchment, cold press, or your own image — with strength and scale; they turn with the page
 - An optional crease down the middle of two-page spreads, like an open book, with adjustable darkness and width
-- Pages don't have to fill the window: set the page width and the space above and below, and choose the colour of the desk around them
+- Pages don't have to fill the window: put a desk at the sides and above and below, in any colour
+- Search box in Reading settings that finds any setting across every tab
 - Top and bottom bars are separate bands; the crease stays on the pages
 - On Windows, a flicker fix for hardware acceleration (off, standard or strong)
 - Extra brightness dimming, a warm night-light and vignette
