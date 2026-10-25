@@ -246,6 +246,10 @@ function pageTab() {
       s.flow === 'paginated' ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
       s.flow === 'paginated' && s.spread === 'auto' ? el('p.hint', 'Auto shows two pages when the window is wide enough for each to hold a full line.') : null,
       s.flow === 'paginated' && s.spread !== 'none' ? creaseCtls() : null),
+    section('Page size',
+      range('pageWidth', 'Page width', 50, 100, 1, (v) => (v >= 100 ? 'Whole window' : `${v}%`), 'Below 100%, the pages stop short of the window edges and sit on a desk.'),
+      range('pageInsetY', 'Desk above and below', 0, 120, 2, (v) => (v ? `${v}px` : 'None')),
+      s.pageWidth < 100 || s.pageInsetY > 0 ? deskColorCtl() : null),
     section('Page turn animation',
       el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
       el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
@@ -412,11 +416,29 @@ function paperPicker() {
   ];
 }
 
+// The colour around the page: a shade darker than the page, or any colour.
+function deskColorCtl() {
+  const s = getSettings();
+  const presets = ['#d9d4ca', '#b9b2a6', '#8a8174', '#5b5b5f', '#2b2b2e', '#2f3a33', '#33384a', '#4a3a32'];
+  const swatch = (hex) => el('button.desk-swatch', {
+    class: `desk-swatch ${s.deskColor === hex ? 'on' : ''}`, title: hex, style: { '--c': hex },
+    onclick: () => { setSettings({ deskColor: hex }); render(); },
+  });
+  return el('div.ctl',
+    el('label', 'Desk colour'),
+    el('div.desk-row',
+      el('button.desk-swatch.auto', { class: `desk-swatch auto ${!s.deskColor ? 'on' : ''}`, title: 'A shade darker than the page', onclick: () => { setSettings({ deskColor: '' }); render(); } }, 'Auto'),
+      presets.map(swatch),
+      el('label.desk-swatch.custom', { title: 'Any colour', class: `desk-swatch custom ${s.deskColor && !presets.includes(s.deskColor) ? 'on' : ''}`, style: { '--c': s.deskColor || '#888888' } },
+        el('input', { type: 'color', value: s.deskColor || '#888888', oninput: (e) => setSettings({ deskColor: e.target.value }), onchange: () => render() }))));
+}
+
 function creaseCtls() {
   const s = getSettings();
   return [
     toggleCtl('spineShadow', 'Crease between pages', 'A fold down the middle of two-page spreads, like an open book.'),
-    s.spineShadow ? range('creaseDepth', 'Crease depth', 5, 100, 1, (v) => (v < 25 ? 'Faint' : v < 50 ? 'Soft' : v < 75 ? 'Deep' : 'Very deep')) : null,
+    s.spineShadow ? range('creaseDepth', 'Crease darkness', 0, 100, 1, (v) => (v < 20 ? 'Faint' : v < 45 ? 'Soft' : v < 70 ? 'Dark' : v < 90 ? 'Very dark' : 'Deepest')) : null,
+    s.spineShadow ? range('creaseWidth', 'Crease width', 0, 100, 1, (v) => (v < 30 ? 'Narrow' : v < 65 ? 'Medium' : 'Wide')) : null,
   ];
 }
 
@@ -540,7 +562,7 @@ function graphicsSection() {
     el('input', { type: 'checkbox', checked: !!gfx[key], onchange: async (e) => { gfx = await window.api.graphics.set({ [key]: e.target.checked }); render(); } }),
     el('span.switch'));
   return section('Display',
-    sw('hardwareAcceleration', 'Hardware acceleration', 'Smoother animations when on. Off by default on Windows, where some GPUs (notably NVIDIA with HDR) flicker with it.'),
+    sw('hardwareAcceleration', 'Hardware acceleration', 'Smoother animations. If the screen flickers with it on, try the flicker fix below, or turn this off.'),
     windows && gfx.hardwareAcceleration ? el('div.ctl',
       el('label', 'Flicker fix'),
       el('div.seg', [['off', 'Off'], ['standard', 'Standard'], ['strong', 'Strong']].map(([v, l]) => el('button', {

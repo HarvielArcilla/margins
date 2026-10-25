@@ -143,19 +143,33 @@ export function layoutFor(s, stageEl = $('#stage')) {
 
 const even = (n) => 2 * Math.round(n / 2);
 
+// The page can be smaller than the window, with a "desk" around it: the
+// stage (the page area, which is also what page turns picture) shrinks.
+export function applyPageSize(s = getSettings()) {
+  const rv = $('#reader-view');
+  const pw = Math.max(40, Math.min(100, s.pageWidth ?? 100));
+  const iy = Math.max(0, Math.min(200, s.pageInsetY ?? 0));
+  rv.style.setProperty('--desk-x', `${(100 - pw) / 2}%`);
+  rv.style.setProperty('--desk-y', `${iy}px`);
+  rv.classList.toggle('has-desk', pw < 100 || iy > 0);
+  if (s.deskColor) rv.style.setProperty('--desk', s.deskColor); else rv.style.removeProperty('--desk');
+}
+
 function placeBook(L) {
   const book = $('#book');
   Object.assign(book.style, { left: `${L.padX}px`, top: `${L.padY}px`, width: `${L.width}px`, height: `${L.height}px` });
   const rv = $('#reader-view').style;
   // footer and header text line up with the text block, not the window
-  rv.setProperty('--text-left', `${L.padX + L.inset}px`);
-  rv.setProperty('--text-right', `${L.padX + L.inset}px`);
+  const st = $('#stage').getBoundingClientRect(), all = $('#reader-view').getBoundingClientRect();
+  rv.setProperty('--text-left', `${st.left - all.left + L.padX + L.inset}px`);
+  rv.setProperty('--text-right', `${all.right - st.right + L.padX + L.inset}px`);
   R.layout = L;
   paper.placeSpine(L, 0);
 }
 
 async function createRendition(at) {
   const s = getSettings();
+  applyPageSize(s);
   const L = layoutFor(s);
   R.cols = L.cols;
   R.gap = L.gap;
@@ -323,6 +337,7 @@ export function applyTheme() {
     if (node) node.hidden = v <= 0.001;
   }
   paper.apply(s, isDark(theme));
+  applyPageSize(s);
   rv.classList.toggle('no-header', !s.showHeader);
   rv.classList.toggle('no-footer', !s.showFooter);
   rv.classList.toggle('immersive', !!s.hideChromeWhileReading);
@@ -352,7 +367,7 @@ const onPointer = perFrame((y) => { if (!R.open) return; revealChromeNear(y); fo
 document.addEventListener('mousemove', (e) => onPointer(e.clientY));
 
 const RECREATE_KEYS = new Set(['flow']);
-const RELAYOUT_KEYS = new Set(['spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
+const RELAYOUT_KEYS = new Set(['pageWidth', 'pageInsetY', 'spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
   'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'publisherStyles', 'fontWeight', 'headingFont', 'headingScale',
   'imageFit', 'textAlign', 'wordBreaks', 'dropCaps', 'smallCapsHeadings']);
 
@@ -360,7 +375,7 @@ const relayoutSoon = debounce(() => relayout(), 220);
 
 // Settings that don't change how a page looks, so the pictures of the pages
 // kept for turning stay good.
-const UNSEEN_KEYS = /^(pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
+const UNSEEN_KEYS = /^(deskColor|pageAnimation|animationMs|curlFrom|key[A-Z]|clickZones|invertZones|doubleTap|wheel|swipe|gamepad|autoTurn|autoScroll|autoPause|tts)/;
 
 function onSettingsChanged(s, changed) {
   if (!R.open) return;

@@ -13,18 +13,23 @@ const store = require('./store');
 // app to be ready) in a tiny JSON file.
 const GPU_FILE = path.join(app.getPath('userData'), 'graphics.json');
 function readGraphics() {
-  // Off by default on Windows, where some GPU/HDR setups flicker; on elsewhere.
+  // Hardware acceleration is on everywhere; on Windows the flicker some
+  // GPU/HDR setups showed is handled by the flicker fix below.
   const win = process.platform === 'win32';
-  const defaults = { hardwareAcceleration: !win, srgb: win, flickerFix: win ? 'standard' : 'off' };
-  try { return { ...defaults, ...JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')) }; } catch { return defaults; }
+  const defaults = { v: 2, hardwareAcceleration: true, srgb: win, flickerFix: win ? 'standard' : 'off' };
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')); } catch { /* none yet */ }
+  // Before v2 acceleration was off by default on Windows and that default was
+  // written into the file with any other change; start those on the new default.
+  if (!saved.v) delete saved.hardwareAcceleration;
+  return { ...defaults, ...saved, v: 2 };
 }
 const graphics = readGraphics();
-if (!graphics.hardwareAcceleration) {
-  app.disableHardwareAcceleration();
-  // Keep WebGL (the page curl) available through Chromium's software
-  // renderer. It only ever draws the app's own pages.
-  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-}
+if (!graphics.hardwareAcceleration) app.disableHardwareAcceleration();
+// Keep WebGL (the page curl) available through Chromium's software renderer
+// when there is no GPU, or when the GPU is on Chromium's blocklist. It only
+// ever draws the app's own pages.
+app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 // Pin colours to sRGB. With Windows HDR / NVIDIA RTX auto-HDR on, Chromium
 // otherwise re-tonemaps every frame, which shows up as washed-out colours and
 // flickering when layers change.

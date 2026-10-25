@@ -47,7 +47,11 @@ export const DEFAULTS = {
   paperScale: 1,
   paperImage: '',
   spineShadow: true,
-  creaseDepth: 45, // 0-100: how deep the crease between two pages looks
+  creaseWidth: 50, // 0-100
+  pageWidth: 100, // % of the window the page (or spread) takes; the rest is desk
+  pageInsetY: 0, // px of desk above and below the page
+  deskColor: '', // '' = a shade darker than the page
+  creaseDepth: 45, // 0-100: how dark the crease between two pages is
   vignette: 0, // 0-100
   autoDarkTheme: '', // theme used when the OS is in dark mode ('' = off)
   lastLightTheme: 'paper', // for the C (day/night) shortcut

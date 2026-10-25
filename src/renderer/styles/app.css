@@ -255,26 +255,44 @@ body.dropping #drop-hint { display: grid; }
 }
 /* The bars are separate bands above and below the pages. */
 #reader-topbar, #reader-footer {
-  background: color-mix(in srgb, var(--bg) 94%, var(--fg));
+  background: color-mix(in srgb, var(--bg) 92%, var(--fg));
   /* kept inside the bar: nothing may spill onto the page below, which is
      pictured for page turns without it */
   box-shadow: inset 0 -1px 0 var(--border);
 }
-:root[data-dark="1"] #reader-topbar, :root[data-dark="1"] #reader-footer { background: color-mix(in srgb, var(--bg) 92%, #fff); }
+:root[data-dark="1"] #reader-topbar, :root[data-dark="1"] #reader-footer { background: color-mix(in srgb, var(--bg) 82%, #000); }
 #reader-footer { box-shadow: inset 0 1px 0 var(--border); }
 .tb-group { display: flex; align-items: center; gap: 1px; flex: none; }
 .tb-sep { width: 1px; height: 18px; background: var(--border); margin: 0 6px; }
 .tb-center { flex: 1; min-width: 0; display: flex; align-items: baseline; justify-content: center; gap: 8px; padding: 0 12px; }
+/* In the reader the title is centred on the window itself, whatever the
+   buttons either side add up to (they differ, and so do the window controls
+   on each platform). */
+#reader-topbar .tb-center { position: absolute; inset: 0; align-items: center; pointer-events: none; padding: 0; }
+#reader-topbar .tb-center > * { pointer-events: auto; }
+#reader-topbar .title-btn { max-width: min(42vw, 560px); }
+#reader-topbar #reader-chapter { display: none; }
+#reader-topbar .tb-group.right { margin-left: auto; }
+#reader-topbar .tb-group { position: relative; z-index: 1; }
 .title-btn { border: 0; background: none; padding: 4px 8px; border-radius: 6px; font: 600 13px/1.2 var(--ui); max-width: 46%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
 .title-btn:hover { background: var(--hover); }
 #reader-chapter { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 #reader-chapter:not(:empty)::before { content: "·"; margin-right: 8px; color: var(--faint); }
 .session-time { font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
 
-#stage { position: absolute; top: var(--topbar); bottom: var(--footer); left: 0; right: 0; overflow: hidden; }
-#reader-view.no-header #stage { top: 14px; }
-#reader-view.no-footer #stage { bottom: 10px; }
-body.focus-mode #stage { top: 10px; bottom: 10px; }
+/* The stage is the page (or the open spread). With a desk around it, it is
+   inset from the window; page turns picture exactly this area. */
+#stage { position: absolute; top: calc(var(--topbar) + var(--desk-y, 0px)); bottom: calc(var(--footer) + var(--desk-y, 0px)); left: var(--desk-x, 0); right: var(--desk-x, 0); overflow: hidden; background: var(--bg); }
+#reader-view.no-header #stage { top: calc(14px + var(--desk-y, 0px)); }
+#reader-view.no-footer #stage { bottom: calc(10px + var(--desk-y, 0px)); }
+body.focus-mode #stage { top: calc(10px + var(--desk-y, 0px)); bottom: calc(10px + var(--desk-y, 0px)); }
+/* the desk: what shows around a page that doesn't fill the window */
+#reader-view { --desk-auto: color-mix(in srgb, var(--bg) 86%, var(--fg)); background: var(--desk, var(--desk-auto)); }
+:root[data-dark="1"] #reader-view { --desk-auto: color-mix(in srgb, var(--bg) 72%, #000); }
+#reader-view:not(.has-desk) { background: var(--bg); }
+/* the page sits on the desk with a soft shadow (outside the page, so never
+   in the pictures page turns are made from) */
+#reader-view.has-desk #stage { box-shadow: 0 0 0 1px color-mix(in srgb, var(--fg) 7%, transparent), 0 6px 24px -8px rgba(0,0,0,.28), 0 2px 6px -2px rgba(0,0,0,.12); }
 #viewer { position: absolute; inset: 0; transform-origin: center; }
 #book { position: absolute; }
 #book .epub-container { margin: 0 auto; }
@@ -326,7 +344,6 @@ body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #
 body.sidebar-open #reader-topbar, body.settings-open #reader-topbar { opacity: 1 !important; pointer-events: auto !important; }
 body.sidebar-open #reader-topbar .icon-btn, body.settings-open #reader-topbar .icon-btn { pointer-events: auto !important; }
 #reader-view.no-header #reader-topbar:not(:hover) { opacity: 0; }
-#reader-view.no-header #reader-topbar { background: var(--bg); }
 #reader-view.no-footer #reader-footer { display: none; }
 body.focus-mode #reader-topbar, body.focus-mode #reader-footer { opacity: 0 !important; pointer-events: none; }
 
@@ -344,12 +361,8 @@ body.focus-mode #reader-topbar, body.focus-mode #reader-footer { opacity: 0 !imp
 /* The crease lives in the page area only: the top and bottom bars are
    separate bands, and the turn animations picture exactly this area. Its
    depth scales one deep gradient (--crease 0..1) and its width. */
-#spine { position: absolute; top: 0; bottom: 0; left: calc(var(--spine-x, -200px) - var(--crease-w, 120px) / 2); width: var(--crease-w, 120px); z-index: 0; pointer-events: none; display: none;
-  opacity: var(--crease, .45);
-  background:
-    linear-gradient(90deg, transparent 42%, rgba(255,255,255,.35) 46%, transparent 48.5%, transparent 51.5%, rgba(255,255,255,.35) 54%, transparent 58%),
-    linear-gradient(90deg, transparent, rgba(40,25,10,.08) 28%, rgba(40,25,10,.24) 45%, rgba(40,25,10,.42) 49.5%, rgba(40,25,10,.42) 50.5%, rgba(40,25,10,.24) 55%, rgba(40,25,10,.08) 72%, transparent); }
-:root[data-dark="1"] #spine { background: linear-gradient(90deg, transparent, rgba(0,0,0,.2) 28%, rgba(0,0,0,.5) 45%, rgba(0,0,0,.75) 49.5%, rgba(0,0,0,.75) 50.5%, rgba(0,0,0,.5) 55%, rgba(0,0,0,.2) 72%, transparent); }
+#spine { position: absolute; top: 0; bottom: 0; left: calc(var(--spine-x, -200px) - var(--crease-w, 160px) / 2); width: var(--crease-w, 160px); z-index: 0; pointer-events: none; display: none;
+  background-repeat: repeat-y; background-position: 0 0; }
 #reader-view.two-pages.spine-shadow #spine { display: block; }
 body[data-flow="scrolled"] #spine, body[data-flow="continuous"] #spine { display: none !important; }
 
@@ -698,3 +711,12 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 .status-row > span:last-child { text-align: right; overflow-wrap: anywhere; }
 .status-row .good { color: #3f9a5b; }
 .status-row .bad { color: #c8553d; }
+
+/* desk colour picker (Settings → Pages → Page size) */
+.desk-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.desk-swatch { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border); background: var(--c); padding: 0; cursor: pointer; position: relative; }
+.desk-swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+.desk-swatch.auto { width: auto; padding: 0 10px; font-size: 12px; color: var(--fg); background: color-mix(in srgb, var(--bg) 86%, var(--fg)); }
+.desk-swatch.custom { background: conic-gradient(#e66, #ec6, #6c6, #6ce, #66e, #c6e, #e66); }
+.desk-swatch.custom.on { background: var(--c); }
+.desk-swatch.custom input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }

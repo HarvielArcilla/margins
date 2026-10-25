@@ -26,7 +26,8 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - 28 colour schemes: Paper, Sepia, Cream, Parchment, Mint, Sky, Rose, E-ink, Solarized, Gruvbox, Nord, Dracula, Night, OLED black, Red Night, Terminal, high-contrast and more
 - Build and save your own schemes
 - Paper textures under the page — fine grain, cotton, laid, linen, vellum, recycled, newsprint, parchment, cold press, or your own image — with strength and scale; they turn with the page
-- An optional crease down the middle of two-page spreads, like an open book, with adjustable depth
+- An optional crease down the middle of two-page spreads, like an open book, with adjustable darkness and width
+- Pages don't have to fill the window: set the page width and the space above and below, and choose the colour of the desk around them
 - Top and bottom bars are separate bands; the crease stays on the pages
 - On Windows, a flicker fix for hardware acceleration (off, standard or strong)
 - Extra brightness dimming, a warm night-light and vignette
@@ -82,7 +83,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Full-text search, collapsible table of contents with percentages, go to percentage, progress scrubber
 - Read aloud with system voices, word-by-word highlighting, automatic page turning
 - Right-to-left books turn the right way
-- On Windows, hardware acceleration is off by default, which avoids flickering on some GPUs (notably NVIDIA with HDR); turn it on in Reading settings → More → Display if you prefer. Colours are pinned to sRGB on Windows for HDR / auto-HDR setups
+- Hardware acceleration is on by default. On Windows a flicker fix (Reading settings → More → Display) handles GPUs that flicker, notably NVIDIA with HDR, and colours are pinned to sRGB for HDR / auto-HDR setups
 - Everything stays on your computer
 
 ## Screenshots

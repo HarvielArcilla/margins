@@ -214,10 +214,60 @@ export function apply(s, dark) {
   }
   const rv = $('#reader-view');
   rv.classList.toggle('spine-shadow', !!s.spineShadow);
-  // deeper creases are darker and a little wider
-  const depth = Math.max(0, Math.min(100, s.creaseDepth ?? 45)) / 100;
-  rv.style.setProperty('--crease', depth.toFixed(3));
-  rv.style.setProperty('--crease-w', `${Math.round(70 + depth * 110)}px`);
+  if (s.spineShadow) {
+    const dark01 = Math.max(0, Math.min(100, s.creaseDepth ?? 45)) / 100;
+    const width = Math.round(50 + Math.max(0, Math.min(100, s.creaseWidth ?? 50)) * 2.2);
+    const key = `${dark01}|${width}|${dark ? 1 : 0}`;
+    if (key !== creaseKey) {
+      creaseKey = key;
+      const sp = $('#spine');
+      if (sp) {
+        sp.style.backgroundImage = `url("${creaseUrl(width, dark01, dark)}")`;
+        sp.style.backgroundSize = `${width}px ${CREASE_TILE}px`;
+      }
+      rv.style.setProperty('--crease-w', `${width}px`);
+    }
+  }
+}
+
+// ---------- the crease ----------
+// A gutter is a page curving down into the binding: light falls off slowly,
+// then quickly into a narrow dark line, with a faint highlight where the
+// paper turns toward you before it dips. Drawn once per setting into a tile
+// (with a touch of fixed noise, so the long faint falloff doesn't band) and
+// repeated down the spread. Deterministic, so the hidden page renderer draws
+// exactly the same crease.
+const CREASE_TILE = 128;
+let creaseKey = '';
+function creaseUrl(width, d, dark) {
+  const k = 2; // drawn at 2x
+  const w = width * k, h = CREASE_TILE * k;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const g = c.getContext('2d');
+  const img = g.createImageData(w, h);
+  const r = rng(7331);
+  const peak = dark ? 0.35 + d * 0.6 : 0.12 + d * 0.62;
+  const ink = dark ? [0, 0, 0] : [38, 24, 10];
+  const profile = new Float32Array(w);
+  for (let x = 0; x < w; x++) {
+    const u = Math.abs((x + 0.5) / w * 2 - 1); // 0 at the fold, 1 at the edges
+    const fade = Math.pow(1 - u, 2.4);
+    const shadow = peak * (0.6 * Math.exp(-u * 8) * (1 - u) + 0.4 * fade);
+    const hl = dark ? 0 : 0.07 * d * Math.exp(-Math.pow((u - 0.3) / 0.09, 2));
+    profile[x] = shadow - hl;
+  }
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = (y * w + x) * 4;
+      const v = profile[x] + (r() - 0.5) * (1.2 / 255);
+      const col = v >= 0 ? ink : [255, 253, 246];
+      img.data[p] = col[0]; img.data[p + 1] = col[1]; img.data[p + 2] = col[2];
+      img.data[p + 3] = Math.max(0, Math.min(255, Math.round(Math.abs(v) * 255)));
+    }
+  }
+  g.putImageData(img, 0, 0);
+  return c.toDataURL('image/png');
 }
 
 // Where the spine is, for the gutter shadow in two-page spreads.

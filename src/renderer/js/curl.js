@@ -36,6 +36,7 @@ uniform sampler2D uTex;
 uniform sampler2D uBack;  // the page printed on the back of the leaf, if known
 uniform float uHasBack;
 uniform float uRigid;     // >= 0: rigid flip at this angle (radians); < 0: curl
+uniform float uFlipped;   // 0..1: how much of the leaf has come over the top
 
 vec2 toLeaf(vec2 px) { return vec2((px.x - uHinge) * uSide, px.y - uLeaf.y); }
 vec2 texAt(vec2 px) { return (px - uCap.xy) / uCap.zw; }
@@ -69,7 +70,7 @@ void main() {
     if (d > 0.0 && l.x <= uLeaf.x) sh = 0.40 * exp(-d / (r * 1.6 + 6.0));
     // soft drop shadow around the part lying flipped over
     float o = flippedOutside(l);
-    if (o > 0.0 && o < 60.0) sh = max(sh, 0.20 * exp(-o / 14.0) * clamp(r / 20.0 + 0.4, 0.0, 1.0));
+    if (o > 0.0 && o < 60.0) sh = max(sh, 0.20 * uFlipped * exp(-o / 14.0) * clamp(r / 20.0 + 0.4, 0.0, 1.0));
   }
   if (uRigid >= 0.0 && l.y >= 0.0 && l.y <= uLeaf.z) {
     float s = sin(uRigid);
@@ -134,7 +135,10 @@ void main() {
   vN = n;
   vCurl = curl;
   vec2 c = uRes * 0.5;
-  s = c + (s - c) * (1.0 + z * uPersp);
+  // Perspective: a lifted curl only bulges vertically, so it never reaches
+  // out past the page's own edge; the rigid flip keeps full perspective.
+  vec2 k = uRigid >= 0.0 ? vec2(1.0) : vec2(0.0, 1.0);
+  s = c + (s - c) * (1.0 + z * uPersp * k);
   gl_Position = vec4(s.x / uRes.x * 2.0 - 1.0, 1.0 - s.y / uRes.y * 2.0, -z * 0.0005, 1.0);
 }`;
 
@@ -164,7 +168,7 @@ void main() {
   float spec = clamp(vCurl, 0.0, 1.0) * (uRigid < 0.0 ? 0.07 : 0.0) * pow(max(refl.z, 0.0), 8.0);
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
   float o = flippedOutside(vP);
-  float flatShadow = (o > 0.0 && o < 80.0) ? 0.2 * exp(-o / 16.0) * uShadow : 0.0;
+  float flatShadow = (o > 0.0 && o < 80.0) ? 0.2 * uFlipped * exp(-o / 16.0) * uShadow : 0.0;
   if (face >= 0.0) {
     if (uFrontLive > 0.5) {
       // the arriving page lying in place: let the real page show through,
@@ -383,6 +387,12 @@ export class Curl {
     let { a, r, p } = this.params(tt, angle);
     if (rigid) { a = 0; r = 0.01; p = -1e5; }
     const N = [Math.cos(a), Math.sin(a)];
+    // Has any of the page come over the top of the curl yet? Until it has,
+    // there is nothing lying flipped over to cast a shadow ahead of the fold.
+    let dmax = 0;
+    for (const [cx, cy] of [[0, 0], [w, 0], [0, h], [w, h]]) dmax = Math.max(dmax, (cx - p) * N[0] + (cy - h * 0.5) * N[1]);
+    const half = Math.PI * Math.max(r, 0.01) * 0.5;
+    const flipped = rigid ? 1 : Math.min(1, Math.max(0, (dmax - half) / half));
 
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
@@ -398,6 +408,7 @@ export class Curl {
       g.uniform3f(u.uLeaf, w, o.leaf.top, h);
       g.uniform3f(u.uFold, p, h * 0.5, r);
       g.uniform2f(u.uN, N[0], N[1]);
+      if (u.uFlipped) g.uniform1f(u.uFlipped, flipped);
       g.uniform4f(u.uCap, o.cap.x, o.cap.y, o.cap.w, o.cap.h);
       g.uniform1i(u.uTex, 0);
       if (u.uBack) g.uniform1i(u.uBack, 1);
