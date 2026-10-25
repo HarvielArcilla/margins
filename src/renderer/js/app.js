@@ -16,8 +16,10 @@ import * as tts from './tts.js';
 const R = reader.R;
 
 async function boot() {
-  const info = await window.api.info();
+  const [info, gfx] = await Promise.all([window.api.info(), window.api.graphics.get()]);
   document.body.classList.add(`platform-${info.platform}`);
+  // lighter effects when the window is drawn without a GPU
+  document.documentElement.dataset.gpu = gfx.active?.hardwareAcceleration ? 'on' : 'off';
   await Promise.all([loadSettings(), loadFonts(), stats.loadStats(), library.loadLibrary()]);
   reader.applyTheme();
   wireTopbar();

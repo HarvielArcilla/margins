@@ -13,7 +13,8 @@ const store = require('./store');
 // app to be ready) in a tiny JSON file.
 const GPU_FILE = path.join(app.getPath('userData'), 'graphics.json');
 function readGraphics() {
-  const defaults = { hardwareAcceleration: false, srgb: process.platform === 'win32' };
+  // Off by default on Windows, where some GPU/HDR setups flicker; on elsewhere.
+  const defaults = { hardwareAcceleration: process.platform !== 'win32', srgb: process.platform === 'win32' };
   try { return { ...defaults, ...JSON.parse(fs.readFileSync(GPU_FILE, 'utf8')) }; } catch { return defaults; }
 }
 const graphics = readGraphics();
@@ -55,6 +56,7 @@ function resolveAppUrl(url) {
   };
   if (top === 'vendor') return VENDOR[rest.join('/')] || null;
   if (top === 'userfonts') return safe(store.dirs().fonts, rest);
+  if (top === 'usertextures') return safe(store.dirs().textures, rest);
   if (top === 'covers') return safe(store.dirs().covers, rest);
   return safe(RENDERER, rel ? rel.split('/') : ['index.html']);
 }
@@ -248,6 +250,18 @@ function registerIpc() {
     return data.fonts;
   });
 
+  handle('textures:import', async () => {
+    const r = await dialog.showOpenDialog(win, {
+      title: 'Choose a paper texture',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const file = r.filePaths[0];
+    const name = `${Date.now().toString(36)}-${path.basename(file).replace(/[^\w.\-]+/g, '_')}`;
+    fs.copyFileSync(file, path.join(store.dirs().textures, name));
+    return name;
+  });
   handle('file:save', async ({ defaultPath, content, filters }) => {
     const r = await dialog.showSaveDialog(win, { defaultPath, filters });
     if (r.canceled || !r.filePath) return null;
@@ -274,6 +288,23 @@ function registerIpc() {
       x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height),
     });
     return img.toDataURL();
+  });
+  // Raw pixels (no PNG encode/decode): much faster for page-turn snapshots.
+  handle('window:capture-raw', async (rect) => {
+    const img = await win.webContents.capturePage({
+      x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height),
+    });
+    const data = img.toBitmap();
+    const scales = typeof img.getScaleFactors === 'function' ? img.getScaleFactors() : [1];
+    let { width, height } = img.getSize(scales[0] || 1);
+    if (width * height * 4 !== data.length) {
+      // derive the pixel size from the data and the requested aspect ratio
+      const px = data.length / 4;
+      width = Math.round(Math.sqrt(px * (rect.width / rect.height)));
+      height = Math.round(px / width);
+    }
+    // Chromium's native pixel order on desktop is BGRA
+    return { width, height, data, order: 'bgra' };
   });
   handle('bookcache:get', (id) => store.readJson(path.join('cache', `${id}.json`), {}));
   handle('bookcache:set', (id, data) => store.writeJson(path.join('cache', `${id}.json`), data));

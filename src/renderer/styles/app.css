@@ -250,7 +250,7 @@ body.dropping #drop-hint { display: grid; }
 /* ---------- reader ---------- */
 #reader-topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 20;
-  background: var(--bg);
+  background: transparent; /* the paper continues under it */
   transition: opacity .2s ease;
 }
 .tb-group { display: flex; align-items: center; gap: 1px; flex: none; }
@@ -279,7 +279,6 @@ body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #
 #book { transition: opacity .18s ease; }
 
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
-.fx-texture { background-image: var(--paper-grain); background-size: 192px; opacity: var(--fx-texture, 0); }
 .fx-vignette { background: radial-gradient(ellipse 75% 70% at center, transparent 50%, rgba(60, 35, 10, .5) 100%); opacity: var(--fx-vignette, 0); z-index: 4; }
 :root[data-dark="1"] .fx-vignette { background: radial-gradient(ellipse 75% 70% at center, transparent 50%, rgba(0,0,0,.75) 100%); }
 /* the dimmer and night light cover the bars too */
@@ -318,14 +317,25 @@ body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #
 body.sidebar-open #reader-topbar, body.settings-open #reader-topbar { opacity: 1 !important; pointer-events: auto !important; }
 body.sidebar-open #reader-topbar .icon-btn, body.settings-open #reader-topbar .icon-btn { pointer-events: auto !important; }
 #reader-view.no-header #reader-topbar:not(:hover) { opacity: 0; }
+#reader-view.no-header #reader-topbar { background: var(--bg); }
 #reader-view.no-footer #reader-footer { display: none; }
 body.focus-mode #reader-topbar, body.focus-mode #reader-footer { opacity: 0 !important; pointer-events: none; }
 
 /* ---------- page-turn layers ---------- */
-.curl-canvas { position: absolute; left: 0; top: 0; z-index: 31; pointer-events: none; }
-.turn-sheet { position: absolute; left: 0; width: 100%; z-index: 31; pointer-events: none; background-repeat: no-repeat; }
-.turn-sheet.shadowed { box-shadow: 18px 0 40px rgba(0,0,0,.28); }
-.turn-edge-line { position: absolute; left: -36px; width: 36px; z-index: 32; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(0,0,0,.22)); }
+/* Above the night light and dimmer (z 30): the snapshot already has them. */
+.turn-snap { position: absolute; left: 0; top: 0; z-index: 31; pointer-events: none; transform-origin: center; }
+.turn-snap.shadowed { box-shadow: 18px 0 40px rgba(0,0,0,.28); }
+.curl-shadow { position: absolute; left: 0; top: 0; z-index: 32; pointer-events: none; }
+.curl-canvas { position: absolute; left: 0; top: 0; z-index: 33; pointer-events: none; }
+.turn-edge-line { position: absolute; top: 0; bottom: 0; left: -36px; width: 36px; z-index: 34; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(0,0,0,.2)); }
+
+/* ---------- paper ---------- */
+#paper { position: absolute; inset: 0; z-index: 0; pointer-events: none; background-repeat: repeat; background-position: 0 0; }
+#spine { position: absolute; top: var(--topbar); bottom: var(--footer); left: calc(var(--spine-x, -200px) - 60px); width: 120px; z-index: 0; pointer-events: none; display: none;
+  background: linear-gradient(90deg, transparent, rgba(40,25,10,.035) 30%, rgba(40,25,10,.11) 47%, rgba(40,25,10,.16) 50%, rgba(40,25,10,.11) 53%, rgba(40,25,10,.035) 70%, transparent); }
+:root[data-dark="1"] #spine { background: linear-gradient(90deg, transparent, rgba(0,0,0,.1) 30%, rgba(0,0,0,.28) 47%, rgba(0,0,0,.36) 50%, rgba(0,0,0,.28) 53%, rgba(0,0,0,.1) 70%, transparent); }
+#reader-view.two-pages.spine-shadow #spine { display: block; }
+body[data-flow="scrolled"] #spine, body[data-flow="continuous"] #spine { display: none !important; }
 
 /* reading ruler */
 #ruler { position: absolute; left: 0; right: 0; z-index: 4; pointer-events: none; transition: top .08s linear; }
@@ -454,8 +464,8 @@ body.sidebar-open #sidebar, body.settings-open #settings { transform: none; visi
   repeating-linear-gradient(to bottom, color-mix(in srgb, var(--fg) 32%, transparent) 0 1.3px, transparent 1.3px 3.4px) 0 7px / 100% calc(100% - 7px) no-repeat; }
 .pv-spread::after { content: ""; position: absolute; left: 50%; top: 8%; bottom: 8%; width: 1px; background: color-mix(in srgb, var(--fg) 7%, transparent); }
 .pv-old { z-index: 1; }
-.anim-card:hover .pv-old, .anim-card.on .pv-old,
-.anim-card:hover .pv-new, .anim-card.on .pv-new { animation-duration: 2.6s; animation-iteration-count: infinite; animation-timing-function: linear; }
+.anim-card:hover .pv-old,
+.anim-card:hover .pv-new { animation-duration: 2.6s; animation-iteration-count: infinite; animation-timing-function: linear; }
 [data-kind="none"] .pv-old { animation-name: pv-none-old; }
 [data-kind="fade"] .pv-old { animation-name: pv-fade-old; }
 [data-kind="slide"] .pv-old { animation-name: pv-slide-old; } [data-kind="slide"] .pv-new { animation-name: pv-slide-new; }
@@ -641,3 +651,20 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 
 :root[data-eink="1"] * { transition: none !important; animation: none !important; box-shadow: none !important; }
 @media (prefers-reduced-motion: reduce) { * { transition-duration: 0s !important; animation-duration: 0s !important; } }
+
+/* ---------- drawing without a GPU ----------
+   Big soft shadows and sliding panels are what costs the most when every
+   frame is drawn by the CPU: keep panels' shadows small and let them fade
+   instead of slide. */
+:root[data-gpu="off"] #sidebar, :root[data-gpu="off"] #settings { box-shadow: 0 6px 18px rgba(0,0,0,.16); transition: opacity .14s ease, visibility .14s; transform: none !important; }
+:root[data-gpu="off"] #sel-popup, :root[data-gpu="off"] .popup-menu { box-shadow: 0 6px 16px rgba(0,0,0,.18); }
+:root[data-gpu="off"] .modal { box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+:root[data-gpu="off"] .book-card:hover .cover-wrap { box-shadow: 0 2px 4px rgba(0,0,0,.08), 0 12px 20px -8px rgba(30,20,10,.3); }
+:root[data-gpu="off"] #toast { box-shadow: none; }
+
+/* paper picker */
+.paper-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
+.paper-card { display: grid; gap: 4px; padding: 0 0 6px; border-radius: 10px; border: 1px solid rgba(128,128,128,.25); overflow: hidden; font-size: 10.5px; text-align: center; transition: box-shadow .15s; }
+.paper-card.on { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
+.paper-swatch { display: grid; place-items: center; aspect-ratio: 1 / .7; background-repeat: repeat; color: var(--muted); }
+.paper-name { opacity: .85; }

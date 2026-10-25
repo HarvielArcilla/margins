@@ -11,6 +11,9 @@ import * as stats from './stats.js';
 import * as tts from './tts.js';
 import * as sidebar from './sidebar.js';
 import * as focus from './focus.js';
+import { schedulePrepare, invalidate as invalidateSnapshot } from './turn-anim.js';
+import { idle, perFrame } from './perf.js';
+import * as paper from './paper.js';
 
 export const R = {
   meta: null, // library record
@@ -62,7 +65,8 @@ export async function openBook(meta, { at } = {}) {
   stats.startSession(meta);
   sidebar.bookOpened();
   window.api.library.upsert(meta.id, { lastOpenedAt: Date.now() });
-  prepareBackgroundData();
+  // measuring the book can wait until the first page is up and things are quiet
+  idle(1500).then(() => { if (R.meta?.id === meta.id) prepareBackgroundData(); });
 }
 
 export async function closeBook({ keepView = false } = {}) {
@@ -147,6 +151,7 @@ function placeBook(L) {
   rv.setProperty('--text-left', `${L.padX + L.inset}px`);
   rv.setProperty('--text-right', `${L.padX + L.inset}px`);
   R.layout = L;
+  paper.placeSpine(L, 0);
 }
 
 async function createRendition(at) {
@@ -242,6 +247,7 @@ const onWindowResize = debounce(async () => {
 }, 200);
 window.addEventListener('resize', () => {
   if (!R.open) return;
+  invalidateSnapshot();
   $('#reader-view').classList.add('resizing');
   onWindowResize();
 });
@@ -277,7 +283,7 @@ function attachContentListeners(contents) {
     return { x: r.left + e.clientX, y: r.top + e.clientY };
   };
   doc.addEventListener('wheel', (e) => turner.handleWheel(e), { passive: false });
-  doc.addEventListener('mousemove', (e) => { const p = toTop(e); focus.pointer(p.y); stats.activity(); revealChromeNear(p.y); });
+  doc.addEventListener('mousemove', (e) => { const p = toTop(e); onPointer(p.y); });
   doc.addEventListener('mousedown', (e) => turner.handlePointerDown(toTop(e), e, doc));
   doc.addEventListener('mouseup', (e) => setTimeout(() => annotations.onMouseUp(contents, e, toTop(e)), 0));
   doc.addEventListener('click', (e) => {
@@ -318,7 +324,6 @@ export function applyTheme() {
   const fx = {
     dim: 1 - s.brightness / 100,
     warm: (s.warmth / 100) * 0.22,
-    texture: (s.paperTexture / 100) * (isDark(theme) ? 0.5 : 0.75),
     vignette: s.vignette / 100,
   };
   for (const [k, v] of Object.entries(fx)) {
@@ -326,33 +331,11 @@ export function applyTheme() {
     const node = rv.querySelector(`.fx-${k}`);
     if (node) node.hidden = v <= 0.001;
   }
-  if (fx.texture > 0) ensureTexture();
+  paper.apply(s, isDark(theme));
   rv.classList.toggle('no-header', !s.showHeader);
   rv.classList.toggle('no-footer', !s.showFooter);
   rv.classList.toggle('immersive', !!s.hideChromeWhileReading);
   return theme;
-}
-
-// A small tile of paper grain, drawn once to a canvas. (An SVG noise filter
-// is re-rasterised on every composite and is a common source of flicker.)
-let textureUrl = null;
-function ensureTexture() {
-  if (textureUrl) return;
-  const c = document.createElement('canvas');
-  c.width = c.height = 192;
-  const ctx = c.getContext('2d');
-  const img = ctx.createImageData(192, 192);
-  let seed = 7;
-  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = rnd();
-    const fibre = rnd() < 0.015 ? 0.5 : 0;
-    img.data[i] = 90; img.data[i + 1] = 72; img.data[i + 2] = 48;
-    img.data[i + 3] = Math.round((v * v * 0.16 + fibre * 0.25) * 255);
-  }
-  ctx.putImageData(img, 0, 0);
-  textureUrl = c.toDataURL('image/png');
-  document.documentElement.style.setProperty('--paper-grain', `url(${textureUrl})`);
 }
 
 let chromeTimer = null;
@@ -363,24 +346,30 @@ export function showChrome(on = true) {
 }
 export function toggleChrome() { showChrome(!$('#reader-view').classList.contains('show-chrome')); }
 
+let peek = '';
 function revealChromeNear(y) {
   const rv = $('#reader-view');
   if (!rv.classList.contains('immersive')) return;
-  const h = innerHeight;
-  rv.classList.toggle('peek-top', y < 70);
-  rv.classList.toggle('peek-bottom', y > h - 60);
+  const next = y < 70 ? 'top' : y > innerHeight - 60 ? 'bottom' : '';
+  if (next === peek) return; // only touch classes when something changes
+  peek = next;
+  rv.classList.toggle('peek-top', next === 'top');
+  rv.classList.toggle('peek-bottom', next === 'bottom');
 }
-document.addEventListener('mousemove', (e) => { if (R.open) { revealChromeNear(e.clientY); focus.pointer(e.clientY); stats.activity(); } });
+// pointer moves arrive far faster than frames; handle at most one per frame
+const onPointer = perFrame((y) => { if (!R.open) return; revealChromeNear(y); focus.pointer(y); stats.activity(); });
+document.addEventListener('mousemove', (e) => onPointer(e.clientY));
 
 const RECREATE_KEYS = new Set(['flow']);
 const RELAYOUT_KEYS = new Set(['spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',
   'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'publisherStyles', 'fontWeight', 'headingFont', 'headingScale',
-  'imageFit', 'textAlign', 'hyphenation', 'dropCaps', 'smallCapsHeadings']);
+  'imageFit', 'textAlign', 'wordBreaks', 'dropCaps', 'smallCapsHeadings']);
 
 const relayoutSoon = debounce(() => relayout(), 220);
 
 function onSettingsChanged(s, changed) {
   if (!R.open) return;
+  invalidateSnapshot();
   applyTheme();
   restyleAll();
   annotations.restyle();
@@ -399,6 +388,7 @@ function onRelocated(location) {
   if (!R.relayouting && !cfiOnPage(R.anchor, location)) R.anchor = location.start.cfi;
   updateFooter();
   saveProgress();
+  schedulePrepare();
   sidebar.locationChanged();
   annotations.locationChanged();
   if (prev && prev.start.cfi !== location.start.cfi) stats.pageTurn(location);
@@ -549,6 +539,11 @@ async function prepareBackgroundData() {
     if (R.cache.locations) {
       book.locations.load(R.cache.locations);
     } else {
+      // measure section by section in idle time, pausing for animations
+      const loc = book.locations;
+      const process = loc.process.bind(loc);
+      loc.process = async (section) => { await idle(); return R.book === book ? process(section) : undefined; };
+      await idle(1500);
       await book.locations.generate(1200);
       if (R.book !== book) return;
       R.cache.locations = book.locations.save();
@@ -564,7 +559,7 @@ async function prepareBackgroundData() {
           words[item.index] = countWords(doc.textContent || doc.innerText || '');
           item.unload();
         } catch { words[item.index] = 0; }
-        await new Promise((r) => setTimeout(r, 0));
+        await idle();
       }
       R.cache.sectionWords = words;
       const total = words.reduce((a, b) => a + (b || 0), 0);

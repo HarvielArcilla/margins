@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   annotations: { get: call('annotations:get'), set: call('annotations:set') },
   stats: { get: call('stats:get'), set: call('stats:set') },
   fonts: { list: call('fonts:list'), import: call('fonts:import'), remove: call('fonts:remove') },
+  textures: { import: call('textures:import') },
   file: { save: call('file:save'), openJson: call('file:open-json') },
   openExternal: call('shell:open'),
   window: {
@@ -27,6 +28,7 @@ contextBridge.exposeInMainWorld('api', {
     onTop: call('window:on-top'),
     chrome: call('window:chrome'),
     capture: call('window:capture'),
+    captureRaw: call('window:capture-raw'),
   },
   bookCache: { get: call('bookcache:get'), set: call('bookcache:set') },
   info: call('app:info'),

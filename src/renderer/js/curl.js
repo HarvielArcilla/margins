@@ -9,15 +9,15 @@
 // beyond the free edge to the hinge (and shrinking r to nothing) turns the
 // page over completely.
 //
-// Layers, drawn into one canvas over the book:
-//   base  – the parts of the old spread that stay put until the leaf lands,
-//           plus the shadows the leaf casts; everywhere else is transparent,
-//           so the new page (already rendered underneath) shows through
-//   leaf  – front: the old page; back: paper with the print showing through
+// Layers, drawn into one transparent canvas over the book:
+//   shadows – cast by the leaf on whatever is under it
+//   leaf    – front: the old page; back: paper with the print showing through
+// The parts of the old spread that stay put are not drawn here: a plain
+// snapshot underneath shows them at full sharpness (turn-anim.js).
 //
 // In "hole" mode (turning back on a single page) the leaf is the *new* page
 // arriving: its flat front is cut out of the canvas so the live page shows,
-// and the base is the whole old page.
+// and the snapshot underneath is the whole old page.
 
 const VS_BASE = `
 attribute vec2 aPos;
@@ -51,25 +51,23 @@ float flippedOutside(vec2 q) {
 `;
 
 const FS_BASE = COMMON + `
-uniform vec2 uStatic;     // x range (css px) where the old page stays put
 uniform float uShadow;    // 0..1 strength of cast shadows
 uniform float uDpr;
+uniform vec2 uStatic;     // hole mode: x range where the old page is drawn here
 void main() {
   vec2 px = vec2(gl_FragCoord.x, uRes.y * uDpr - gl_FragCoord.y) / uDpr;
   vec4 c = vec4(0.0);
-  if (px.x >= uStatic.x && px.x < uStatic.y && px.y >= uCap.y) {
-    c = vec4(texture2D(uTex, texAt(px)).rgb, 1.0);
-  }
+  if (px.x >= uStatic.x && px.x < uStatic.y) c = vec4(texture2D(uTex, texAt(px)).rgb, 1.0);
   vec2 l = toLeaf(px);
   float sh = 0.0;
-  if (l.x >= -2.0 && l.y >= -2.0 && l.y <= uLeaf.z + 2.0) {
+  if (uRigid < 0.0 && l.x >= -2.0 && l.y >= -2.0 && l.y <= uLeaf.z + 2.0) {
     float d = dot(l - uFold.xy, uN);
     float r = uFold.z;
     // ambient occlusion under the lifted part, strongest at the fold
-    if (d > 0.0 && l.x <= uLeaf.x) sh = 0.42 * exp(-d / (r * 1.6 + 6.0));
+    if (d > 0.0 && l.x <= uLeaf.x) sh = 0.40 * exp(-d / (r * 1.6 + 6.0));
     // soft drop shadow around the part lying flipped over
     float o = flippedOutside(l);
-    if (o > 0.0 && o < 60.0) sh = max(sh, 0.22 * exp(-o / 14.0) * clamp(r / 20.0 + 0.4, 0.0, 1.0));
+    if (o > 0.0 && o < 60.0) sh = max(sh, 0.20 * exp(-o / 14.0) * clamp(r / 20.0 + 0.4, 0.0, 1.0));
   }
   if (uRigid >= 0.0 && l.y >= 0.0 && l.y <= uLeaf.z) {
     float s = sin(uRigid);
@@ -82,16 +80,22 @@ void main() {
   gl_FragColor = vec4(c.rgb * (1.0 - sh), c.a + (1.0 - c.a) * sh);
 }`;
 
+// Lighting and the shadow of the flipped part are worked out per vertex
+// (the mesh is fine enough that it looks the same), so each pixel only does
+// a texture read and a multiply — this is what keeps the curl smooth when
+// the window is drawn without a GPU.
 const VS_LEAF = COMMON + `
 attribute vec2 aUV;
 uniform float uPersp;
+uniform float uShadow;
 varying vec2 vTex;
-varying vec2 vLocal;
-varying vec3 vNorm;
-varying float vCurl;      // 0 flat, 1 on the cylinder, 2 flipped flat
+varying float vFace;      // >0 front, <0 back
+varying float vShade;     // diffuse lighting
+varying float vSpec;      // highlight along the curl
+varying float vFlatShadow; // shadow of the flipped part on the flat front
+varying float vFlat;      // 1 where the page still lies flat
 void main() {
   vec2 p = aUV * vec2(uLeaf.x, uLeaf.z);
-  vLocal = p;
   vec2 screen0 = vec2(uHinge + uSide * p.x, uLeaf.y + p.y);
   vTex = texAt(screen0);
   float r = max(uFold.z, 0.01);
@@ -99,12 +103,11 @@ void main() {
   vec2 q = p;
   float z = 0.0;
   vec3 n = vec3(0.0, 0.0, 1.0);
-  vCurl = 0.0;
+  float curl = 0.0;
   if (uRigid >= 0.0) {
     q = vec2(p.x * cos(uRigid), p.y);
     z = p.x * sin(uRigid);
     n = vec3(-sin(uRigid), 0.0, cos(uRigid));
-    vCurl = uRigid > 0.001 ? 1.0 : 0.0;
   } else if (d > 0.0) {
     float circ = 3.14159265 * r;
     vec2 base = p - uN * d;
@@ -113,18 +116,25 @@ void main() {
       q = base + uN * (r * sin(th));
       z = r * (1.0 - cos(th));
       n = vec3(-uN * sin(th), cos(th));
-      vCurl = 1.0;
+      curl = 1.0;
     } else {
       q = base - uN * (d - circ);
       z = 2.0 * r;
       n = vec3(0.0, 0.0, -1.0);
-      vCurl = 2.0;
     }
   }
-  // back to screen; mirroring for a left-hand leaf flips the x of the normal
   vec2 s = vec2(uHinge + uSide * q.x, uLeaf.y + q.y);
   n.x *= uSide;
-  vNorm = n;
+  vFace = n.z;
+  vec3 nf = n.z >= 0.0 ? n : -n;
+  vec3 L = normalize(vec3(-0.35, -0.45, 1.0));
+  float diff = clamp(dot(nf, L), 0.0, 1.0) / L.z;
+  vShade = mix(0.42, 1.0, clamp(diff, 0.0, 1.0)) + 0.04 * clamp(diff - 1.0, 0.0, 1.0);
+  vec3 refl = reflect(-L, nf);
+  vSpec = curl * (uRigid < 0.0 ? 0.09 : 0.0) * pow(max(refl.z, 0.0), 10.0);
+  vFlat = (uRigid < 0.0 && d <= 0.0) ? 1.0 : 0.0;
+  float o = flippedOutside(p);
+  vFlatShadow = (o > 0.0 && o < 60.0) ? 0.22 * exp(-o / 14.0) * uShadow : 0.0;
   vec2 c = uRes * 0.5;
   s = c + (s - c) * (1.0 + z * uPersp);
   gl_Position = vec4(s.x / uRes.x * 2.0 - 1.0, 1.0 - s.y / uRes.y * 2.0, -z * 0.0005, 1.0);
@@ -135,50 +145,37 @@ uniform vec3 uPaper;
 uniform float uBackAlpha;
 uniform float uFrontLive;
 uniform float uShowThrough;
-uniform float uShadow;
 uniform vec3 uTint;       // night light / dimming applied to drawn paper
 varying vec2 vTex;
-varying vec2 vLocal;
-varying vec3 vNorm;
-varying float vCurl;
+varying float vFace;
+varying float vShade;
+varying float vSpec;
+varying float vFlatShadow;
+varying float vFlat;
 void main() {
-  vec3 n = normalize(vNorm);
-  bool front = n.z >= 0.0;
-  vec3 nf = front ? n : -n;
-  vec3 L = normalize(vec3(-0.35, -0.45, 1.0));
-  float diff = clamp(dot(nf, L), 0.0, 1.0) / L.z;
-  float shade = mix(0.42, 1.0, clamp(diff, 0.0, 1.0)) + 0.04 * clamp(diff - 1.0, 0.0, 1.0);
-  vec3 V = vec3(0.0, 0.0, 1.0);
-  float spec = pow(max(dot(reflect(-L, nf), V), 0.0), 10.0) * (vCurl > 0.5 && vCurl < 1.5 && uRigid < 0.0 ? 0.09 : 0.0);
-  if (front) {
-    if (uFrontLive > 0.5 && vCurl < 0.5) {
+  vec3 paper = uPaper * uTint;
+  if (vFace >= 0.0) {
+    if (uFrontLive > 0.5) {
       // the arriving page lying in place: let the real page show through,
       // darkened by the shadow of the part still lifted over it
-      float o = flippedOutside(vLocal);
-      float sh = (o > 0.0 && o < 60.0) ? 0.22 * exp(-o / 14.0) * uShadow : 0.0;
-      gl_FragColor = vec4(0.0, 0.0, 0.0, sh);
+      if (vFlat > 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, vFlatShadow); return; }
+      if (uRigid >= 0.0) {
+        float a = smoothstep(0.0, 0.9, uRigid);
+        gl_FragColor = vec4(paper * vShade * a, a);
+        return;
+      }
+      gl_FragColor = vec4(paper * vShade + vSpec, 1.0);
       return;
     }
-    if (uFrontLive > 0.5 && uRigid >= 0.0) {
-      float a = smoothstep(0.0, 0.9, uRigid) ;
-      gl_FragColor = vec4(uPaper * uTint * shade * a, a);
-      return;
-    }
-    vec3 col = uFrontLive > 0.5 ? uPaper * uTint : texture2D(uTex, vTex).rgb;
-    if (vCurl < 0.5) {
-      float o = flippedOutside(vLocal);
-      if (o > 0.0 && o < 60.0) shade *= 1.0 - 0.22 * exp(-o / 14.0) * uShadow;
-    }
-    gl_FragColor = vec4(col * shade + spec, 1.0);
+    vec3 col = texture2D(uTex, vTex).rgb;
+    float shade = vShade * (1.0 - vFlatShadow * vFlat);
+    gl_FragColor = vec4(col * shade + vSpec, 1.0);
   } else {
-    // print showing through the paper: only the ink, faintly, never the page
-    vec3 front = uFrontLive > 0.5 ? uPaper * uTint : texture2D(uTex, vTex).rgb;
-    float ink = clamp(length(front - uPaper * uTint) * 1.6, 0.0, 1.0);
-    vec3 col = mix(uPaper * uTint, front, ink * uShowThrough);
-    // a touch darker than the page, like the underside of a sheet
-    col *= 0.94;
-    float a = uBackAlpha;
-    gl_FragColor = vec4((col * shade + spec) * a, a);
+    // the back: paper, with the print faintly showing through (mirrored)
+    vec3 front = uFrontLive > 0.5 ? paper : texture2D(uTex, vTex).rgb;
+    float ink = clamp(length(front - paper) * 1.6, 0.0, 1.0);
+    vec3 col = mix(paper, front, ink * uShowThrough) * 0.94;
+    gl_FragColor = vec4((col * vShade + vSpec) * uBackAlpha, uBackAlpha);
   }
 }`;
 
@@ -210,22 +207,40 @@ const hexRgb = (hex) => {
 };
 
 export class Curl {
-  constructor(host, { grid = [56, 40] } = {}) {
+  // soft: drawing without a GPU — fewer triangles, no multisampling and a
+  // capped resolution, so frames keep up.
+  constructor(host, { grid, soft = false } = {}) {
     this.host = host;
+    this.soft = soft;
+    grid ||= soft ? [72, 48] : [96, 64];
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'curl-canvas';
     this.canvas.hidden = true;
     host.append(this.canvas);
     this.grid = grid;
+    // Shadows are soft, so they are drawn on a small canvas that the
+    // compositor stretches over the page: a fraction of the work.
+    this.shadowScale = soft ? 0.25 : 0.5;
+    this.shadowCanvas = document.createElement('canvas');
+    this.shadowCanvas.className = 'curl-shadow';
+    this.shadowCanvas.hidden = true;
+    host.append(this.shadowCanvas);
     this.ok = false;
     try { this.init(); this.ok = true; } catch (e) { console.warn('page curl unavailable:', e.message || e); }
   }
 
   init() {
-    const gl = this.canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: true, depth: true, preserveDrawingBuffer: false });
+    const gl = this.canvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: !this.soft, depth: true, preserveDrawingBuffer: false, powerPreference: 'high-performance', desynchronized: false });
     if (!gl) throw new Error('no WebGL');
     this.gl = gl;
     this.base = program(gl, VS_BASE, FS_BASE);
+    const sg = this.shadowCanvas.getContext('webgl', { premultipliedAlpha: true, alpha: true, antialias: false, depth: false });
+    if (!sg) throw new Error('no WebGL');
+    this.sg = sg;
+    this.sbase = program(sg, VS_BASE, FS_BASE);
+    this.squad = sg.createBuffer();
+    sg.bindBuffer(sg.ARRAY_BUFFER, this.squad);
+    sg.bufferData(sg.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), sg.STATIC_DRAW);
     this.leaf = program(gl, VS_LEAF, FS_LEAF);
     this.quad = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
@@ -256,25 +271,38 @@ export class Curl {
     this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.ok = false; });
   }
 
-  // opts: { image, W, H, cap:{x,y,w,h}, hinge, side, leaf:{w,top,h}, stat:[x0,x1],
+  // Upload the snapshot (an ImageBitmap, canvas or image). Done ahead of time
+  // when possible so a turn starts drawing at once.
+  setImage(image) {
+    if (!this.ok || !image || this.image === image) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    this.image = image;
+  }
+
+  // opts: { image, W, H, cap:{x,y,w,h}, hinge, side, leaf:{w,top,h},
   //         frontLive, paper, tint, showThrough, persp }
   begin(opts) {
     if (!this.ok) return false;
-    const gl = this.gl;
     const dpr = window.devicePixelRatio || 1;
-    this.o = { showThrough: 0.06, persp: 0.00035, stat: [0, 0], frontLive: false, tint: [1, 1, 1], ...opts };
-    this.dpr = dpr;
-    const cw = Math.round(opts.W * dpr), ch = Math.round(opts.H * dpr);
+    this.o = { showThrough: 0.06, persp: 0.00035, frontLive: false, tint: [1, 1, 1], ...opts };
+    // quality (set by turn-anim from measured frame times) trades sharpness
+    // of the moving page for frame rate on slower machines
+    this.dpr = (this.soft ? Math.min(dpr, 1) : Math.min(dpr, 2)) * (this.quality || 1);
+    const cw = Math.round(opts.W * this.dpr), ch = Math.round(opts.H * this.dpr);
     if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
     Object.assign(this.canvas.style, { width: `${opts.W}px`, height: `${opts.H}px` });
-    gl.bindTexture(gl.TEXTURE_2D, this.tex);
-    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, opts.image);
+    const sw = Math.max(1, Math.round(opts.W * this.shadowScale)), sh = Math.max(1, Math.round(opts.H * this.shadowScale));
+    if (this.shadowCanvas.width !== sw || this.shadowCanvas.height !== sh) { this.shadowCanvas.width = sw; this.shadowCanvas.height = sh; }
+    Object.assign(this.shadowCanvas.style, { width: `${opts.W}px`, height: `${opts.H}px` });
+    this.setImage(opts.image);
     this.paper = hexRgb(opts.paper);
     return true;
   }
 
-  show(on = true) { this.canvas.hidden = !on; }
+  show(on = true) { this.canvas.hidden = !on; this.shadowCanvas.hidden = !on; }
 
   // Fold line and radius for a point in the turn.
   params(t, angle) {
@@ -323,41 +351,59 @@ export class Curl {
     gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    const set = (prog) => {
+    const set = (prog, g = gl) => {
       const u = prog.u;
-      gl.useProgram(prog.p);
-      gl.uniform2f(u.uRes, o.W, o.H);
-      gl.uniform1f(u.uHinge, o.hinge);
-      gl.uniform1f(u.uSide, o.side);
-      gl.uniform3f(u.uLeaf, w, o.leaf.top, h);
-      gl.uniform3f(u.uFold, p, h * 0.5, r);
-      gl.uniform2f(u.uN, N[0], N[1]);
-      gl.uniform4f(u.uCap, o.cap.x, o.cap.y, o.cap.w, o.cap.h);
-      gl.uniform1i(u.uTex, 0);
-      if (u.uShadow) gl.uniform1f(u.uShadow, shadow);
-      gl.uniform1f(u.uRigid, rigid ? Math.PI * tt : -1);
+      g.useProgram(prog.p);
+      g.uniform2f(u.uRes, o.W, o.H);
+      g.uniform1f(u.uHinge, o.hinge);
+      g.uniform1f(u.uSide, o.side);
+      g.uniform3f(u.uLeaf, w, o.leaf.top, h);
+      g.uniform3f(u.uFold, p, h * 0.5, r);
+      g.uniform2f(u.uN, N[0], N[1]);
+      g.uniform4f(u.uCap, o.cap.x, o.cap.y, o.cap.w, o.cap.h);
+      g.uniform1i(u.uTex, 0);
+      if (u.uShadow) g.uniform1f(u.uShadow, shadow);
+      g.uniform1f(u.uRigid, rigid ? Math.PI * tt : -1);
       return u;
     };
+    const fullQuad = (g, prog, buf) => {
+      g.bindBuffer(g.ARRAY_BUFFER, buf);
+      const aPos = g.getAttribLocation(prog.p, 'aPos');
+      g.enableVertexAttribArray(aPos);
+      g.vertexAttribPointer(aPos, 2, g.FLOAT, false, 0, 0);
+      g.drawArrays(g.TRIANGLE_STRIP, 0, 4);
+      g.disableVertexAttribArray(aPos);
+    };
 
-    // base layer
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.BLEND);
-    let u = set(this.base);
-    gl.uniform2f(u.uStatic, o.stat[0], o.stat[1]);
-    gl.uniform1f(u.uDpr, this.dpr);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
-    const aPos = gl.getAttribLocation(this.base.p, 'aPos');
-    gl.enableVertexAttribArray(aPos);
-    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    gl.disableVertexAttribArray(aPos);
+    let u;
+    if (o.stillInGL) {
+      // hole mode: the old page and the shadows go in this canvas, so the
+      // arriving page can cut through them
+      u = set(this.base);
+      gl.uniform1f(u.uDpr, this.dpr);
+      gl.uniform2f(u.uStatic, ...o.stillInGL);
+      fullQuad(gl, this.base, this.quad);
+    } else {
+      const sg = this.sg;
+      sg.viewport(0, 0, this.shadowCanvas.width, this.shadowCanvas.height);
+      sg.clearColor(0, 0, 0, 0);
+      sg.clear(sg.COLOR_BUFFER_BIT);
+      u = set(this.sbase, sg);
+      sg.uniform1f(u.uDpr, this.shadowScale);
+      sg.uniform2f(u.uStatic, 0, 0);
+      fullQuad(sg, this.sbase, this.squad);
+    }
 
-    // leaf: written over the base (no blending, so its alpha replaces the
-    // base's and the live page can show through its back as it lands)
+    // leaf: written over the shadows without blending, so its alpha replaces
+    // theirs and the live page can show through its back as it lands
+    gl.disable(gl.BLEND);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
     u = set(this.leaf);
     gl.uniform1f(u.uPersp, rigid ? o.persp * 1.6 : o.persp);
+    gl.uniform1f(u.uShadow, shadow);
     gl.uniform3f(u.uPaper, ...this.paper);
     gl.uniform3f(u.uTint, ...o.tint);
     gl.uniform1f(u.uBackAlpha, backAlpha);
@@ -374,17 +420,22 @@ export class Curl {
 
   destroy() {
     try { this.gl?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* gone */ }
+    try { this.sg?.getExtension('WEBGL_lose_context')?.loseContext(); } catch { /* gone */ }
     this.canvas.remove();
+    this.shadowCanvas.remove();
     this.ok = false;
   }
 
   end() {
     this.show(false);
     this.o = null;
-    if (this.ok) {
-      const gl = this.gl;
-      gl.bindTexture(gl.TEXTURE_2D, this.tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
-    }
+  }
+
+  clearImage() {
+    if (!this.ok) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    this.image = null;
   }
 }

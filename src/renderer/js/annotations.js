@@ -6,6 +6,7 @@ import { HIGHLIGHT_COLORS, HIGHLIGHT_STYLES, findTheme, isDark, rgba, mix } from
 import { R, onContents, liveContents, currentChapter, percentage, visibleRange, goTo } from './reader.js';
 import * as sidebar from './sidebar.js';
 import * as tts from './tts.js';
+import { invalidate as invalidateSnapshot } from './turn-anim.js';
 
 let items = [];
 let bookId = null;
@@ -170,13 +171,17 @@ function renderInContents(contents) {
   if (tag.textContent !== css) tag.textContent = css;
 }
 
-export function renderAll() { for (const c of liveContents()) renderInContents(c); }
+export function renderAll() {
+  for (const c of liveContents()) renderInContents(c);
+  invalidateSnapshot();
+}
 export function restyle() { renderAll(); }
 
 onContents((c) => renderInContents(c));
 
 // Temporary marks (search hits, the word being spoken, a flash after jumping).
 export function mark(name, cfiOrRange, contents) {
+  if (name === 'm-search' || name === 'm-flash') invalidateSnapshot();
   for (const c of liveContents()) c.window?.CSS?.highlights?.delete(name);
   if (!cfiOrRange) return;
   const targets = contents ? [contents] : liveContents();

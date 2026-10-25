@@ -12,6 +12,9 @@ export function buildContentCss(s, theme) {
   const mode = s.publisherStyles; // respect | mix | override
   const text = 'p, li, blockquote, dd, dt, figcaption, td, th, div';
   const out = [];
+  // Splitting words across lines: automatically (hyphenation), only where
+  // the book marks a break (soft hyphens), or never.
+  const hy = { auto: 'auto', book: 'manual', never: 'none' }[s.wordBreaks] || 'auto';
 
   out.push(fontFaceCssFor([s.font, headingName]));
 
@@ -29,13 +32,15 @@ export function buildContentCss(s, theme) {
     font-weight: ${s.fontWeight} ${imp};
     letter-spacing: ${s.letterSpacing}em ${imp};
     word-spacing: ${s.wordSpacing}em ${imp};
-    hyphens: ${s.hyphenation ? 'auto' : 'manual'} ${imp};
-    -webkit-hyphens: ${s.hyphenation ? 'auto' : 'manual'} ${imp};
+    hyphens: ${hy} ${imp};
+    -webkit-hyphens: ${hy} ${imp};
+    ${s.wordBreaks === 'auto' ? `hyphenate-limit-chars: 6 3 2;` : ''}
     font-variant-ligatures: ${s.ligatures ? 'common-ligatures' : 'none'};
     font-variant-numeric: ${s.oldStyleNumbers ? 'oldstyle-nums' : 'normal'};
     ${s.textShadow ? `text-shadow: 0 0 ${s.textShadow}px currentColor;` : ''}
     overflow-wrap: break-word;
   }
+  ${hy === 'none' ? `body * { hyphens: none ${imp}; -webkit-hyphens: none ${imp}; word-break: normal ${imp}; }` : ''}
   b, strong { font-weight: ${s.boldWeight} ${imp}; }`);
 
   if (!s.keepPublisherColors) {
@@ -72,7 +77,7 @@ export function buildContentCss(s, theme) {
     ${s.headingScale !== 1 ? `zoom: ${s.headingScale};` : ''}
     ${s.smallCapsHeadings ? `font-variant: small-caps ${imp}; letter-spacing: 0.04em ${imp};` : ''}
     line-height: 1.25 ${imp};
-    hyphens: manual ${imp};
+    hyphens: ${hy === 'auto' ? 'manual' : hy} ${imp};
     text-align: ${s.textAlign === 'justify' ? 'center' : 'inherit'};
   }`);
 

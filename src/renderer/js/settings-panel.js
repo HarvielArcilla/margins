@@ -7,6 +7,7 @@ import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts
 import { BUILTIN_TEMPLATES, snapshotTemplate, templatePatch } from './templates.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
 import { Curl } from './curl.js';
+import { PAPERS, tileUrl } from './paper.js';
 import { voices } from './tts.js';
 import { R } from './reader.js';
 
@@ -169,14 +170,17 @@ function spacingTab() {
       range('paragraphSpacing', 'Space between paragraphs', 0, 3, 0.05, em),
       range('paragraphIndent', 'First-line indent', 0, 5, 0.1, em),
       seg('textAlign', 'Alignment', [['publisher', 'Book'], ['left', 'Left'], ['justify', 'Justify'], ['center', 'Center']]),
-      toggleCtl('hyphenation', 'Hyphenation', 'Splits long words at line ends — smoother justified text.')),
+      seg('wordBreaks', 'Split words across lines', [['auto', 'Automatically'], ['book', 'Where the book allows'], ['never', 'Never']]),
+      el('p.hint', { style: { marginTop: '-10px', marginBottom: '16px' } }, getSettings().wordBreaks === 'never'
+        ? 'Words always stay whole on one line. Justified text may space out more.'
+        : getSettings().wordBreaks === 'book' ? 'Only at the break points the book itself marks.' : 'Hyphenates long words (6+ letters) for smoother lines.')),
     section('Margins & width',
       range('marginH', 'Side margins', 0, 240, 4, px, 'Shrinks automatically on narrow windows.'),
       range('marginV', 'Top & bottom margins', 0, 160, 4, px),
       range('lineLength', 'Line length', 40, 130, 1, (v) => (v >= 130 ? 'No limit' : `${v} characters`), 'About 60–75 characters is easiest to read. Scales with the font size.'),
       range('columnGap', 'Gap between pages', 0, 160, 4, px)),
     section('Reset', el('button.btn.small', {
-      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'textAlign', 'hyphenation', 'marginH', 'marginV', 'lineLength', 'columnGap']); render(); },
+      onclick: () => { resetSettings(['lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing', 'paragraphIndent', 'textAlign', 'wordBreaks', 'marginH', 'marginV', 'lineLength', 'columnGap']); render(); },
     }, 'Reset spacing to defaults')),
   ];
 }
@@ -196,10 +200,10 @@ function themeTab() {
     section('Light', el('div.theme-grid', light.map(card))),
     section('Dark', el('div.theme-grid', dark.map(card))),
     section('Make your own', customThemeEditor()),
+    section('Paper', paperPicker()),
     section('Atmosphere',
       range('brightness', 'Brightness', 30, 100, 1, pct, 'Dims the page beyond your screen’s minimum.'),
       range('warmth', 'Warmth (night light)', 0, 100, 1, pct),
-      range('paperTexture', 'Paper texture', 0, 100, 1, pct),
       range('vignette', 'Vignette', 0, 100, 1, pct),
       toggleCtl('keepPublisherColors', 'Keep the book’s own text colours'),
       select('autoDarkTheme', 'When the system is in dark mode use', [['', 'Same theme (off)'], ...dark.map((t) => [t.id, t.name])])),
@@ -274,9 +278,10 @@ function animCard(a, on) {
     title: a.blurb,
     onclick: () => { setSettings({ pageAnimation: a.id }); render(); },
     onmouseenter: () => startLeafPreview(pv, a.id),
-    onmouseleave: () => { if (!card.classList.contains('on')) stopLeafPreview(pv); },
+    onmouseleave: () => stopLeafPreview(pv),
   }, pv, el('span.anim-name', a.name), el('span.anim-blurb', a.blurb));
-  if (LEAF.has(a.id)) requestAnimationFrame(() => { drawLeafPreview(pv, a.id, 0); if (on) startLeafPreview(pv, a.id); });
+  // previews only move while hovered, so an open panel costs nothing
+  if (LEAF.has(a.id)) requestAnimationFrame(() => drawLeafPreview(pv, a.id, 0.32));
   return card;
 }
 
@@ -355,7 +360,7 @@ function stopLeafPreview(pv) {
   if (!st) return;
   cancelAnimationFrame(st.raf);
   st.raf = 0;
-  drawLeafPreview(pv, pv.dataset.kind, 0);
+  drawLeafPreview(pv, pv.dataset.kind, 0.32);
 }
 
 async function tryAnimation() {
@@ -365,6 +370,43 @@ async function tryAnimation() {
   await turn(1);
   await new Promise((r) => setTimeout(r, 500));
   await turn(-1);
+}
+
+// ---------- paper ----------
+function paperPicker() {
+  const s = getSettings();
+  const theme = allThemes(s).find((t) => t.id === s.theme) || allThemes(s)[0];
+  const dark = isDark(theme);
+  const card = (p) => {
+    const url = p.id === 'custom' ? (s.paperImage ? `app://reader/usertextures/${encodeURIComponent(s.paperImage)}` : null)
+      : p.id === 'smooth' ? null : tileUrl(p.id, dark);
+    return el('button.paper-card', {
+      class: `paper-card ${s.paperType === p.id ? 'on' : ''}`,
+      title: p.name,
+      style: { background: theme.bg, color: theme.fg },
+      onclick: async () => {
+        if (p.id === 'custom' && !s.paperImage) {
+          const name = await window.api.textures.import();
+          if (!name) return;
+          setSettings({ paperImage: name, paperType: 'custom', paperTexture: Math.max(s.paperTexture, 50) });
+        } else {
+          setSettings({ paperType: p.id, paperTexture: p.id === 'smooth' ? s.paperTexture : Math.max(s.paperTexture, 15) });
+        }
+        render();
+      },
+    },
+    el('span.paper-swatch', { style: url ? { backgroundImage: `url("${url}")`, backgroundSize: p.id === 'custom' ? 'cover' : '128px' } : {} }, p.id === 'custom' && !url ? icon('plus', 16) : null),
+    el('span.paper-name', p.name));
+  };
+  return [
+    el('div.paper-grid', PAPERS.map(card)),
+    s.paperType !== 'smooth' ? range('paperTexture', 'Strength', 0, 100, 1, pct) : null,
+    s.paperType !== 'smooth' ? range('paperScale', 'Scale', 0.5, 3, 0.05, (v) => `${Math.round(v * 100)}%`) : null,
+    s.paperType === 'custom' ? el('div.row-btns', el('button.btn.small', {
+      onclick: async () => { const name = await window.api.textures.import(); if (name) { setSettings({ paperImage: name, paperType: 'custom' }); render(); } },
+    }, icon('upload', 13), 'Choose another image')) : null,
+    toggleCtl('spineShadow', 'Spine shadow', 'A soft shadow down the middle when two pages are side by side.'),
+  ];
 }
 
 function controlsTab() {
@@ -486,7 +528,7 @@ function graphicsSection() {
     el('input', { type: 'checkbox', checked: !!gfx[key], onchange: async (e) => { gfx = await window.api.graphics.set({ [key]: e.target.checked }); render(); } }),
     el('span.switch'));
   return section('Display',
-    sw('hardwareAcceleration', 'Hardware acceleration', 'Off by default. Smoother animations when on, but some GPUs (notably NVIDIA on Windows) flicker with it.'),
+    sw('hardwareAcceleration', 'Hardware acceleration', 'Smoother animations when on. Off by default on Windows, where some GPUs (notably NVIDIA with HDR) flicker with it.'),
     sw('srgb', 'Standard colours (sRGB)', 'Keeps colours steady with Windows HDR or NVIDIA auto-HDR on. Recommended.'),
     changed ? el('button.btn.small.primary', { onclick: () => window.api.relaunch() }, 'Restart Margins to apply') : null);
 }

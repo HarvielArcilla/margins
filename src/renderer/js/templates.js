@@ -4,9 +4,9 @@ import { DEFAULTS } from './settings.js';
 
 export const TEMPLATE_KEYS = [
   'font', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing', 'paragraphSpacing',
-  'paragraphIndent', 'textAlign', 'hyphenation', 'publisherStyles', 'headingFont', 'headingScale', 'dropCaps',
+  'paragraphIndent', 'textAlign', 'wordBreaks', 'publisherStyles', 'headingFont', 'headingScale', 'dropCaps',
   'smallCapsHeadings', 'textShadow', 'flow', 'spread', 'marginH', 'marginV', 'lineLength', 'columnGap',
-  'theme', 'brightness', 'warmth', 'paperTexture', 'vignette', 'pageAnimation', 'animationMs', 'ruler',
+  'theme', 'brightness', 'warmth', 'paperTexture', 'paperType', 'spineShadow', 'vignette', 'pageAnimation', 'animationMs', 'ruler',
   'rulerLines', 'fixation', 'fixationStrength', 'dimImages',
 ];
 
@@ -18,13 +18,13 @@ export const BUILTIN_TEMPLATES = [
   {
     id: 'classic', name: 'Classic Novel', blurb: 'Garamond, justified, indented, page curl',
     settings: { font: 'EB Garamond', fontSize: 21, lineHeight: 1.5, textAlign: 'justify', paragraphIndent: 1.5,
-      paragraphSpacing: 0, hyphenation: true, theme: 'cream', pageAnimation: 'curl', lineLength: 60, dropCaps: true,
+      paragraphSpacing: 0, wordBreaks: 'auto', theme: 'cream', paperType: 'laid', paperTexture: 40, pageAnimation: 'curl', lineLength: 60, dropCaps: true,
       smallCapsHeadings: true, flow: 'paginated', spread: 'auto', publisherStyles: 'mix' },
   },
   {
     id: 'essay', name: 'Modern Essay', blurb: 'Airy, ragged-right, block paragraphs',
     settings: { font: 'Source Serif 4', fontSize: 19, lineHeight: 1.75, textAlign: 'left', paragraphIndent: 0,
-      paragraphSpacing: 1, hyphenation: false, theme: 'white', pageAnimation: 'slide', lineLength: 64, dropCaps: false },
+      paragraphSpacing: 1, wordBreaks: 'never', theme: 'white', pageAnimation: 'slide', lineLength: 64, dropCaps: false },
   },
   {
     id: 'comfort', name: 'Comfort', blurb: 'Large, loose and warm',
@@ -44,13 +44,13 @@ export const BUILTIN_TEMPLATES = [
   {
     id: 'dyslexia', name: 'Dyslexia Friendly', blurb: 'OpenDyslexic, wide spacing, reading ruler',
     settings: { font: 'OpenDyslexic', fontSize: 19, lineHeight: 2, letterSpacing: 0.05, wordSpacing: 0.16,
-      textAlign: 'left', hyphenation: false, paragraphIndent: 0, paragraphSpacing: 1.2, theme: 'cream',
+      textAlign: 'left', wordBreaks: 'never', paragraphIndent: 0, paragraphSpacing: 1.2, theme: 'cream',
       ruler: 'band', rulerLines: 2, lineLength: 58, publisherStyles: 'override' },
   },
   {
     id: 'large-print', name: 'Large Print', blurb: 'Hyperlegible, heavy and high contrast',
     settings: { font: 'Atkinson Hyperlegible', fontSize: 30, fontWeight: 600, lineHeight: 1.6, textAlign: 'left',
-      hyphenation: false, paragraphIndent: 0, paragraphSpacing: 1, theme: 'contrast-light', spread: 'none',
+      wordBreaks: 'never', paragraphIndent: 0, paragraphSpacing: 1, theme: 'contrast-light', spread: 'none',
       marginH: 32, lineLength: 56, publisherStyles: 'override' },
   },
   {
@@ -65,7 +65,7 @@ export const BUILTIN_TEMPLATES = [
   },
   {
     id: 'eink', name: 'E-ink', blurb: 'No animation, crisp, paper-white',
-    settings: { font: 'Literata', fontSize: 20, fontWeight: 450, theme: 'eink', pageAnimation: 'none', paperTexture: 25 },
+    settings: { font: 'Literata', fontSize: 20, fontWeight: 450, theme: 'eink', pageAnimation: 'none', paperTexture: 30, paperType: 'grain' },
   },
   {
     id: 'speed', name: 'Speed Reader', blurb: 'Fixation emphasis, line ruler, continuous scroll',
@@ -75,12 +75,12 @@ export const BUILTIN_TEMPLATES = [
   {
     id: 'typewriter', name: 'Typewriter', blurb: 'Monospaced on warm dark',
     settings: { font: 'JetBrains Mono', fontSize: 16, lineHeight: 1.7, textAlign: 'left', paragraphIndent: 0,
-      paragraphSpacing: 1, theme: 'gruvbox-dark', lineLength: 64, hyphenation: false },
+      paragraphSpacing: 1, theme: 'gruvbox-dark', lineLength: 64, wordBreaks: 'never' },
   },
   {
     id: 'manuscript', name: 'Manuscript', blurb: 'Parchment, Cormorant, vignette, page curl',
     settings: { font: 'Cormorant Garamond', fontSize: 23, fontWeight: 500, lineHeight: 1.5, theme: 'parchment',
-      paperTexture: 55, vignette: 40, pageAnimation: 'curl', dropCaps: true, textAlign: 'justify' },
+      paperTexture: 60, paperType: 'parchment', vignette: 40, pageAnimation: 'curl', dropCaps: true, textAlign: 'justify' },
   },
 ];
 

@@ -14,7 +14,7 @@ export const DEFAULTS = {
   paragraphSpacing: 0.4, // em between paragraphs
   paragraphIndent: 1.4, // em first-line indent
   textAlign: 'justify', // publisher | left | justify | center
-  hyphenation: true,
+  wordBreaks: 'auto', // auto | book | never: splitting words across lines
   headingFont: 'same', // same | publisher | <font name>
   headingScale: 1,
   publisherStyles: 'mix', // respect | mix | override
@@ -42,7 +42,11 @@ export const DEFAULTS = {
   customThemes: [],
   brightness: 100, // 30-100
   warmth: 0, // 0-100 night-light overlay
-  paperTexture: 0, // 0-100
+  paperTexture: 35, // 0-100 strength of the paper texture
+  paperType: 'cotton', // see paper.js
+  paperScale: 1,
+  paperImage: '',
+  spineShadow: true,
   vignette: 0, // 0-100
   autoDarkTheme: '', // theme used when the OS is in dark mode ('' = off)
   lastLightTheme: 'paper', // for the C (day/night) shortcut
@@ -124,6 +128,10 @@ export async function loadSettings() {
   const saved = await window.api.settings.get();
   global = { ...DEFAULTS, ...saved };
   // animations renamed in 1.1
+  if ('hyphenation' in global) {
+    if (!saved.wordBreaks) global.wordBreaks = global.hyphenation === false ? 'book' : 'auto';
+    delete global.hyphenation;
+  }
   const renamed = { peel: 'curl', blur: 'fade' };
   if (renamed[global.pageAnimation]) global.pageAnimation = renamed[global.pageAnimation];
   return global;
@@ -137,9 +145,20 @@ export function getGlobal() { return global; }
 
 export function onSettings(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 
+// Changes are delivered at most once per frame, so dragging a slider
+// restyles the book once per frame rather than once per input event.
+let pendingKeys = new Set();
+let emitRaf = 0;
 function emit(changed) {
-  const s = getSettings();
-  for (const fn of listeners) fn(s, changed);
+  for (const k of changed) pendingKeys.add(k);
+  if (emitRaf) return;
+  emitRaf = requestAnimationFrame(() => {
+    emitRaf = 0;
+    const keys = [...pendingKeys];
+    pendingKeys = new Set();
+    const s = getSettings();
+    for (const fn of listeners) fn(s, keys);
+  });
 }
 
 let saveTimer = null;

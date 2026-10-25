@@ -15,7 +15,8 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 
 **Spacing**
 - Line, letter and word spacing; paragraph spacing and first-line indent
-- Alignment (book / left / justify / centre) and hyphenation
+- Alignment (book / left / justify / centre)
+- Split words across lines automatically, only where the book allows, or never
 - Line length measured in characters, so it scales with the font size
 - Side and top/bottom margins that shrink gracefully on small windows
 - One page, two pages, or automatic spreads that appear only when each page can hold a full line
@@ -24,7 +25,9 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 **Colour & atmosphere**
 - 28 colour schemes: Paper, Sepia, Cream, Parchment, Mint, Sky, Rose, E-ink, Solarized, Gruvbox, Nord, Dracula, Night, OLED black, Red Night, Terminal, high-contrast and more
 - Build and save your own schemes
-- Extra brightness dimming, a warm night-light, paper texture and vignette
+- Paper textures under the page — fine grain, cotton, laid, linen, vellum, recycled, newsprint, parchment, cold press, or your own image — with strength and scale; they turn with the page
+- A soft spine shadow between two pages
+- Extra brightness dimming, a warm night-light and vignette
 - Follow the system's dark mode with a theme of your choice
 - Dim or invert images
 
@@ -40,6 +43,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - **Page curl** like Apple Books: the page bends around a moving fold, with lighting, the back of the paper (print faintly showing through) and soft shadows, drawn with WebGL. Grab the margin beside the text and drag to turn it by hand; let go early and it falls back
 - In a two-page spread only one leaf turns, around the spine: forward the right page turns over onto the left; back, the left page returns to the right
 - Also: a stiff flip, slide, push, cover, fade, zoom and rise, all working from a snapshot of the spread so both pages always move together, with live previews in settings
+- Turns start on the next frame (the page is photographed ahead of time), and the curl adapts its resolution to keep the frame rate up on slower machines
 - Paginated, scroll-a-chapter, or endless scroll
 - Click/tap zone layouts (thirds, Kindle-style, halves, one-handed, tap-anywhere, top/bottom) with a live diagram, and a left-handed swap
 - Arrow keys, Space, Page Up/Down (Bluetooth page-turner pedals and presentation clickers), Vim keys, WASD, media & volume keys
@@ -76,7 +80,7 @@ A deeply customisable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Full-text search, collapsible table of contents with percentages, go to percentage, progress scrubber
 - Read aloud with system voices, word-by-word highlighting, automatic page turning
 - Right-to-left books turn the right way
-- Hardware acceleration is off by default, which avoids flickering on some GPUs (notably NVIDIA on Windows); turn it on in Reading settings → More → Display if you prefer. Colours are pinned to sRGB on Windows for HDR / auto-HDR setups
+- On Windows, hardware acceleration is off by default, which avoids flickering on some GPUs (notably NVIDIA with HDR); turn it on in Reading settings → More → Display if you prefer. Colours are pinned to sRGB on Windows for HDR / auto-HDR setups
 - Everything stays on your computer
 
 ## Screenshots

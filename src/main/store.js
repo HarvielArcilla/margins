@@ -18,6 +18,7 @@ function dirs() {
     covers: path.join(root, 'covers'),
     annotations: path.join(root, 'annotations'),
     fonts: path.join(root, 'fonts'),
+    textures: path.join(root, 'textures'),
   };
 }
 
