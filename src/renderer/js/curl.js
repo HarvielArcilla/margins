@@ -215,9 +215,14 @@ vec4 surface() {
     float landing = smoothstep(0.5, 1.0, roll);     // 0 at the crest, 1 lying flat again
     if (face >= 0.0) shade = light * (1.0 - 0.3 * crest);
     else shade = light * mix(0.7, 1.0, landing);
-    // No sheen: anything added on top of the paper read as the page
-    // brightening ahead of the curl (strongly so on dark themes, where a
-    // little added light is a lot). The curl is drawn only with shade.
+    // A sheen along the roll that builds gradually: nothing at the fold,
+    // rising smoothly (sin^3) to its peak at the crest and easing off again
+    // on the far side. It brightens the paper by a share of its own color
+    // rather than adding light, so it is just as gentle on dark themes; it
+    // grows in as the page starts to lift and fades as it lands (uShadow
+    // carries that envelope), and it waits for the curl to round out.
+    float lift = sin(th);
+    shade += 0.2 * lift * lift * lift * lift * uShadow * smoothstep(4.0, 30.0, r);
   }
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
   float o = flippedOutside(vP);
