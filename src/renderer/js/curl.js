@@ -26,6 +26,9 @@ void main() { gl_Position = vec4(aPos, 0.999, 1.0); }`;
 const COMMON = `
 precision highp float;
 uniform vec2 uRes;        // canvas size in css px
+uniform vec2 uOff;        // where the page area sits in the canvas (css px)
+uniform vec2 uSize;       // the page area's size (css px)
+uniform float uHingeRound; // 1: the hinge side's corners are page corners too
 uniform float uHinge;     // hinge x (css px)
 uniform float uSide;      // +1: leaf to the right of the hinge, -1: to the left
 uniform vec3 uLeaf;       // leaf width, top, height
@@ -65,9 +68,9 @@ uniform float uShadow;    // 0..1 strength of cast shadows
 uniform float uDpr;
 uniform vec2 uStatic;     // hole mode: x range where the old page is drawn here
 void main() {
-  vec2 px = vec2(gl_FragCoord.x, uRes.y * uDpr - gl_FragCoord.y) / uDpr;
+  vec2 px = vec2(gl_FragCoord.x, uRes.y * uDpr - gl_FragCoord.y) / uDpr - uOff;
   vec4 c = vec4(0.0);
-  if (px.x >= uStatic.x && px.x < uStatic.y) c = vec4(texture2D(uTex, texAt(px)).rgb, 1.0);
+  if (px.x >= uStatic.x && px.x < uStatic.y && px.y >= 0.0 && px.y < uSize.y) c = vec4(texture2D(uTex, texAt(px)).rgb, 1.0);
   vec2 l = toLeaf(px);
   float sh = 0.0;
   if (uRigid < 0.0 && l.x >= -2.0 && l.y >= -2.0 && l.y <= uLeaf.z + 2.0) {
@@ -141,11 +144,14 @@ void main() {
   n.x *= uSide;
   vN = n;
   vCurl = curl;
-  vec2 c = uRes * 0.5;
+  vec2 c = uSize * 0.5;
   // Perspective only for the rigid flip: a curl drawn flat stays exactly
   // on the page's own outline (any bulge pushed the roll past the edge).
   vec2 k = uRigid >= 0.0 ? vec2(1.0) : vec2(0.0);
   s = c + (s - c) * (1.0 + z * uPersp * k);
+  // the canvas reaches past the page over the desk, so the turning page
+  // can too
+  s += uOff;
   gl_Position = vec4(s.x / uRes.x * 2.0 - 1.0, 1.0 - s.y / uRes.y * 2.0, -z * 0.0005, 1.0);
 }`;
 
@@ -172,6 +178,10 @@ float edgeCover() {
   if (uRadius > 0.0) {
     vec2 c = vec2(uLeaf.x - uRadius, clamp(vP.y, uRadius, uLeaf.z - uRadius));
     if (vP.x > c.x) d = min(d, uRadius - length(vP - c));
+    if (uHingeRound > 0.5) {
+      vec2 k = vec2(uRadius, clamp(vP.y, uRadius, uLeaf.z - uRadius));
+      if (vP.x < k.x) d = min(d, uRadius - length(vP - k));
+    }
   }
 #ifdef GL_OES_standard_derivatives
   float px = max(length(fwidth(vP)) * 0.7071, 0.35);
@@ -215,14 +225,16 @@ vec4 surface() {
     float landing = smoothstep(0.5, 1.0, roll);     // 0 at the crest, 1 lying flat again
     if (face >= 0.0) shade = light * (1.0 - 0.3 * crest);
     else shade = light * mix(0.7, 1.0, landing);
-    // A sheen along the roll that builds gradually: nothing at the fold,
-    // rising smoothly (sin^3) to its peak at the crest and easing off again
-    // on the far side. It brightens the paper by a share of its own color
-    // rather than adding light, so it is just as gentle on dark themes; it
-    // grows in as the page starts to lift and fades as it lands (uShadow
-    // carries that envelope), and it waits for the curl to round out.
-    float lift = sin(th);
-    shade += 0.2 * lift * lift * lift * lift * uShadow * smoothstep(4.0, 30.0, r);
+    // A soft sheen on the front of the page where it starts to lift, the
+    // way light catches a page as it rises: it swells and fades smoothly
+    // over the first part of the roll and is gone well before the crest.
+    // At the crest the paper is seen edge-on, so any light there showed as
+    // a thin bright streak along the turning edge (worst when the corner
+    // is pulled steeply). It is a share of the paper's own color, grows in
+    // as the page lifts and fades as it lands, and waits for the curl to
+    // round out.
+    float sheen = uShadow * smoothstep(4.0, 30.0, r);
+    if (face >= 0.0) shade += 0.07 * sheen * exp(-pow((roll - 0.2) / 0.12, 2.0));
   }
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
   float o = flippedOutside(vP);
@@ -294,7 +306,7 @@ export class Curl {
   constructor(host, { grid, soft = false } = {}) {
     this.host = host;
     this.soft = soft;
-    grid ||= soft ? [88, 56] : [112, 72];
+    grid ||= soft ? [96, 60] : [160, 104];
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'curl-canvas';
     this.canvas.hidden = true;
@@ -397,12 +409,16 @@ export class Curl {
     // without a GPU the curl is drawn a little below full sharpness on
     // high-density screens; it is moving, so this is hard to see
     this.dpr = (this.soft ? Math.min(dpr, 1.5) : Math.min(dpr, 2)) * (this.quality || 1);
-    const cw = Math.round(opts.W * this.dpr), ch = Math.round(opts.H * this.dpr);
+    // The canvas covers the area around the page as well (opts.area: its
+    // size, and where the page sits in it), so a page lifting past its own
+    // edges is drawn over the desk instead of being cut off.
+    const A = this.area = opts.area || { W: opts.W, H: opts.H, x: 0, y: 0 };
+    const cw = Math.round(A.W * this.dpr), ch = Math.round(A.H * this.dpr);
     if (this.canvas.width !== cw || this.canvas.height !== ch) { this.canvas.width = cw; this.canvas.height = ch; }
-    Object.assign(this.canvas.style, { width: `${opts.W}px`, height: `${opts.H}px` });
-    const sw = Math.max(1, Math.round(opts.W * this.shadowScale)), sh = Math.max(1, Math.round(opts.H * this.shadowScale));
+    Object.assign(this.canvas.style, { width: `${A.W}px`, height: `${A.H}px` });
+    const sw = Math.max(1, Math.round(A.W * this.shadowScale)), sh = Math.max(1, Math.round(A.H * this.shadowScale));
     if (this.shadowCanvas.width !== sw || this.shadowCanvas.height !== sh) { this.shadowCanvas.width = sw; this.shadowCanvas.height = sh; }
-    Object.assign(this.shadowCanvas.style, { width: `${opts.W}px`, height: `${opts.H}px` });
+    Object.assign(this.shadowCanvas.style, { width: `${A.W}px`, height: `${A.H}px` });
     this.setImage(opts.image);
     this.setBack(opts.back || null);
     this.paper = hexRgb(opts.paper);
@@ -453,7 +469,10 @@ export class Curl {
   // from G. Leaf coordinates throughout.
   constrain(G, P) {
     const h = this.o.leaf.h;
-    let x = P[0], y = P[1];
+    let x = P[0];
+    // a held page can be lifted a little above or below its own edges,
+    // not dragged far off them
+    let y = Math.min(h * 1.06, Math.max(-h * 0.06, P[1]));
     for (let k = 0; k < 3; k++) {
       for (const H of [[0, 0], [0, h]]) {
         const max = Math.hypot(G[0] - H[0], G[1] - H[1]);
@@ -467,8 +486,19 @@ export class Curl {
   foldFor(G, P) {
     const w = this.o.leaf.w;
     const dx = G[0] - P[0], dy = G[1] - P[1];
-    const dist = Math.hypot(dx, dy);
-    const N = dist > 0.5 ? [dx / dist, dy / dist] : [1, 0];
+    let dist = Math.hypot(dx, dy);
+    let N = dist > 0.5 ? [dx / dist, dy / dist] : [1, 0];
+    // Paper won't fold at just any angle: past about 30 degrees it would
+    // have to tear at the spine. Hold the fold to that, keeping how far the
+    // page has been pulled along it.
+    const MAX = 0.52;
+    const a = Math.atan2(N[1], N[0]);
+    if (Math.abs(a) > MAX) {
+      const c = Math.sign(a) * MAX;
+      const M = [Math.cos(c), Math.sin(c)];
+      dist = Math.max(0, dx * M[0] + dy * M[1]);
+      N = M;
+    }
     // the curl is tight at both ends of the turn and roundest midway
     const rMax = Math.max(28, Math.min(w * 0.14, 130));
     const r = Math.max(0.01, Math.min(rMax, dist * 0.3, (2 * w - dist) * 0.3));
@@ -501,7 +531,10 @@ export class Curl {
     const set = (prog, g = gl) => {
       const u = prog.u;
       g.useProgram(prog.p);
-      g.uniform2f(u.uRes, o.W, o.H);
+      g.uniform2f(u.uRes, this.area.W, this.area.H);
+      if (u.uOff) g.uniform2f(u.uOff, this.area.x, this.area.y);
+      if (u.uSize) g.uniform2f(u.uSize, o.W, o.H);
+      if (u.uHingeRound) g.uniform1f(u.uHingeRound, o.hingeRound ? 1 : 0);
       g.uniform1f(u.uHinge, o.hinge);
       g.uniform1f(u.uSide, o.side);
       g.uniform3f(u.uLeaf, w, o.leaf.top, h);

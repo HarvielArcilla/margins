@@ -799,3 +799,10 @@ kbd { font: 500 11px/1 var(--ui); padding: 4px 6px; border-radius: 5px; border: 
 
 /* while a page is being dragged, keep the pointer away from the page frames */
 .drag-shield { position: fixed; inset: 0; z-index: 1000; cursor: grabbing; background: transparent; }
+
+/* the turning page: over the page area and the desk around it, so it can
+   lift past the page's edges (the bars stay on top) */
+#turn-over { position: absolute; top: var(--topbar); bottom: var(--footer); left: 0; right: 0; z-index: 33; pointer-events: none; }
+#reader-view.no-header #turn-over { top: 0; }
+#reader-view.no-footer #turn-over { bottom: 0; }
+body.focus-mode #turn-over { top: 0; bottom: 0; }

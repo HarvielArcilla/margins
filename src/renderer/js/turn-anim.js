@@ -78,7 +78,11 @@ export function hurryUp() { hurry = true; }
 let engine = null;
 function curlEngine() {
   if (!engine) {
-    engine = new Curl($('#stage'), { soft: softwareRendering() });
+    // The turning page is drawn in a layer over the page area and the desk
+    // around it, so it can lift past the page's edges.
+    let over = $('#turn-over');
+    if (!over) { over = document.createElement('div'); over.id = 'turn-over'; $('#reader-view').append(over); }
+    engine = new Curl(over, { soft: softwareRendering() });
     engine.quality = QUALITY[qualityStep];
   }
   return engine;
@@ -501,7 +505,9 @@ function leafSetup(s, sign, n) {
   const spread = L?.cols === 2;
   const W = s.W, H = s.H;
   const spine = spread ? Math.round(L.padX + L.width / 2) : 0;
-  const base = { image: s.bitmap, W, H, cap: { x: 0, y: 0, w: W, h: H }, radius: R.pageRadius || 0, ...themeColors() };
+  const st = $('#stage').getBoundingClientRect(), ov = ($('#turn-over') || $('#stage')).getBoundingClientRect();
+  const area = { W: Math.round(ov.width), H: Math.round(ov.height), x: Math.round(st.left - ov.left), y: Math.round(st.top - ov.top) };
+  const base = { image: s.bitmap, W, H, area, cap: { x: 0, y: 0, w: W, h: H }, radius: R.pageRadius || 0, hingeRound: !spread, ...themeColors() };
   if (spread && sign > 0) return { ...base, back: n?.bitmap, under: n, hinge: spine, side: 1, leaf: { w: W - spine, top: 0, h: H }, still: [0, spine], landsOnPage: true };
   if (spread) return { ...base, back: n?.bitmap, under: n, hinge: spine, side: -1, leaf: { w: spine, top: 0, h: H }, still: [spine, W], landsOnPage: true };
   if (sign > 0) return { ...base, under: n, hinge: 0, side: 1, leaf: { w: W, top: 0, h: H }, still: null, landsOnPage: false };
@@ -829,4 +835,18 @@ export async function debugCurlFrame(t, angle = 0.26) {
   e.draw(t, angle, { backAlpha: backAlpha(setup, t), shadow: shadowFor(t) });
   e.show(true);
   return 'ok';
+}
+
+// For tests: the page held at G and pulled to P (leaf coordinates).
+export async function debugCurlPull(G, P) {
+  const s = await currentPicture();
+  const e = curlEngine();
+  const setup = leafSetup(s, 1, knownNeighbour(here(), 'next'));
+  if (!e.begin(setup)) return 'no engine';
+  if (setup.under) showUnder(setup.under);
+  if (setup.still) showSnap(s, clipFor(setup.still, s.W)); else hideSnap();
+  const f = e.foldFor(G, e.constrain(G, P));
+  e.draw(f.q, 0, { backAlpha: backAlpha(setup, f.q), shadow: shadowFor(f.q), fold: f });
+  e.show(true);
+  return JSON.stringify({ w: setup.leaf.w, h: setup.leaf.h, f });
 }
