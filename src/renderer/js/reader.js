@@ -177,6 +177,9 @@ function placeBook(L) {
   const st = $('#stage').getBoundingClientRect(), all = $('#reader-view').getBoundingClientRect();
   rv.setProperty('--text-left', `${st.left - all.left + L.padX + L.inset}px`);
   rv.setProperty('--text-right', `${all.right - st.right + L.padX + L.inset}px`);
+  // the same edges inside the page area, for things drawn on the page
+  rv.setProperty('--page-text-left', `${L.padX + L.inset}px`);
+  rv.setProperty('--page-text-right', `${L.padX + L.inset}px`);
   R.layout = L;
   paper.placeSpine(L, 0);
 }

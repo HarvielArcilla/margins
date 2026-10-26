@@ -377,8 +377,8 @@ body[data-flow="scrolled"] #spine, body[data-flow="continuous"] #spine { display
 
 /* reading ruler */
 #ruler { position: absolute; left: 0; right: 0; z-index: 4; pointer-events: none; transition: top .08s linear; }
-#ruler[data-mode="line"] { background: var(--accent); opacity: var(--ruler-alpha, .3); height: 3px; border-radius: 3px; left: var(--text-left, 8%); right: var(--text-right, 8%); }
-#ruler[data-mode="band"] { background: color-mix(in srgb, var(--accent) calc(var(--ruler-alpha, .3) * 60%), transparent); border-radius: 4px; left: calc(var(--text-left, 8%) - 10px); right: calc(var(--text-right, 8%) - 10px); }
+#ruler[data-mode="line"] { background: var(--accent); opacity: var(--ruler-alpha, .3); height: 3px; border-radius: 3px; left: var(--page-text-left, 8%); right: var(--page-text-right, 8%); }
+#ruler[data-mode="band"] { background: color-mix(in srgb, var(--accent) calc(var(--ruler-alpha, .3) * 60%), transparent); border-radius: 4px; left: calc(var(--page-text-left, 8%) - 10px); right: calc(var(--page-text-right, 8%) - 10px); }
 #ruler[data-mode="spotlight"] { box-shadow: 0 0 0 200vmax color-mix(in srgb, var(--bg) calc(var(--ruler-alpha, .3) * 100% + 30%), transparent); }
 
 /* ---------- floating panels (sidebar & settings) ---------- */
