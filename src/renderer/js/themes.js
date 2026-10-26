@@ -31,16 +31,17 @@ export const THEMES = [
   { id: 'contrast-light', name: 'High Contrast Light', bg: '#ffffff', fg: '#000000', link: '#0000cc', accent: '#0000cc' },
 ];
 
-export function allThemes(settings) {
-  // built-in themes can have their colors changed; the originals stay
-  // available to restore
-  const o = settings.themeOverrides || {};
-  const builtIn = THEMES.map((t) => (o[t.id] ? { ...t, ...o[t.id], edited: true, original: t } : t));
-  return [...builtIn, ...(settings.customThemes || []).map((t) => ({ ...t, custom: true }))];
-}
+// The built-in color schemes. (Your own live as color presets: a built-in
+// scheme with your colors over it — see presets.js.)
+export function allThemes() { return THEMES; }
 
-export function findTheme(settings) {
-  return allThemes(settings).find((t) => t.id === settings.theme) || allThemes(settings)[0];
+// The colors in use: the chosen scheme with any colors changed in Colors
+// over it. `custom: false` gives the scheme alone (for the automatic dark
+// scheme, which shouldn't carry the day scheme's changes).
+export function findTheme(settings, { custom = true } = {}) {
+  const base = THEMES.find((t) => t.id === settings.theme) || THEMES[0];
+  const c = custom ? settings.customColors : null;
+  return c ? { ...base, ...c, id: base.id, edited: true } : base;
 }
 
 export function hexToRgb(hex) {

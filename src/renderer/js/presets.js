@@ -3,6 +3,7 @@
 // reader's own; applying one sets its group's settings (anything it doesn't
 // name goes back to the default) and leaves every other setting alone.
 import { DEFAULTS } from './settings.js';
+import { THEMES, isDark } from './themes.js';
 
 export const GROUPS = {
   text: {
@@ -10,6 +11,7 @@ export const GROUPS = {
       'paragraphSpacing', 'paragraphIndent', 'textAlign', 'wordBreaks', 'publisherStyles', 'headingFont', 'headingScale',
       'dropCaps', 'smallCapsHeadings'],
     userKey: 'userTextStyles', noun: 'text style', title: 'Text styles',
+    filters: [['all', 'All'], ['mine', 'Yours']],
     builtins: [
       { id: 'default', name: 'Margins Default', blurb: 'Balanced book typography', values: {} },
       { id: 'classic', name: 'Classic Novel', blurb: 'Garamond, justified, indented, drop caps',
@@ -35,23 +37,24 @@ export const GROUPS = {
     ],
   },
   colors: {
-    keys: ['theme', 'paperType', 'paperTexture', 'paperScale', 'brightness', 'warmth', 'vignette', 'dimImages'],
+    // a color preset is a scheme (page, text, links, accent) with any
+    // colors you changed over it, plus paper and atmosphere
+    keys: ['theme', 'customColors', 'paperType', 'paperTexture', 'paperScale', 'brightness', 'warmth', 'vignette', 'dimImages'],
     userKey: 'userColorPresets', noun: 'color preset', title: 'Color presets',
+    filters: [['all', 'All'], ['light', 'Light'], ['dark', 'Dark'], ['mine', 'Yours']],
     builtins: [
-      { id: 'daylight', name: 'Daylight', blurb: 'Paper, cotton texture', values: {} },
+      ...THEMES.map((t) => ({ id: `theme-${t.id}`, name: t.name, values: { theme: t.id } })),
       { id: 'classic', name: 'Classic', blurb: 'Cream on laid paper', values: { theme: 'cream', paperType: 'laid', paperTexture: 40 } },
-      { id: 'comfort', name: 'Warm', blurb: 'Sepia with a little warmth', values: { theme: 'sepia', warmth: 10 } },
+      { id: 'warm', name: 'Warm', blurb: 'Sepia with a little warmth', values: { theme: 'sepia', warmth: 10 } },
       { id: 'manuscript', name: 'Manuscript', blurb: 'Parchment and vignette', values: { theme: 'parchment', paperTexture: 60, paperType: 'parchment', vignette: 40 } },
-      { id: 'eink', name: 'E-ink', blurb: 'Crisp paper-white', values: { theme: 'eink', paperTexture: 30, paperType: 'grain' } },
-      { id: 'academic', name: 'Solarized', blurb: 'Low-glare daytime', values: { theme: 'solarized-light' } },
-      { id: 'night', name: 'Night Owl', blurb: 'Dark, dim and warm', values: { theme: 'night', brightness: 80, warmth: 35 } },
+      { id: 'night-owl', name: 'Night Owl', blurb: 'Dark, dim and warm', values: { theme: 'night', brightness: 80, warmth: 35 } },
       { id: 'lights-out', name: 'Lights Out', blurb: 'True black, red text', values: { theme: 'red-night', brightness: 70, dimImages: 50 } },
-      { id: 'typewriter', name: 'Warm Dark', blurb: 'Gruvbox dark', values: { theme: 'gruvbox-dark' } },
     ],
   },
   page: {
     keys: ['spread', 'marginH', 'marginV', 'lineLength', 'columnGap', 'deskX', 'deskY', 'pageRadius', 'spineShadow', 'creaseDepth', 'creaseWidth'],
     userKey: 'userLayouts', noun: 'page layout', title: 'Page layouts',
+    filters: [['all', 'All'], ['mine', 'Yours']],
     builtins: [
       { id: 'full', name: 'Full window', blurb: 'Pages fill the window', values: { spread: 'auto' } },
       { id: 'open-book', name: 'Open book', blurb: 'Two pages on a desk',
@@ -82,9 +85,47 @@ export function isActive(group, settings, p) {
 export const userPresets = (group, s) => (s[GROUPS[group].userKey] || []).map((p) => ({ ...p, user: true }));
 export const allPresets = (group, s) => [...GROUPS[group].builtins, ...userPresets(group, s)];
 
+// Which preset the settings match right now: yours first, then built-ins.
+export function currentPreset(group, s) {
+  return [...userPresets(group, s), ...GROUPS[group].builtins].find((p) => isActive(group, s, p)) || null;
+}
+
+// The colors a color preset shows (for its card).
+export function presetTheme(values) {
+  const base = THEMES.find((t) => t.id === values.theme) || THEMES[0];
+  return values.customColors ? { ...base, ...values.customColors } : base;
+}
+export const presetIsDark = (values) => isDark(presetTheme(values));
+
 // Older versions kept one kind of "style template" mixing text and color
 // (and before that, layout too): split each into a text style and a color
 // preset with the same name.
+// Own color themes (and changed built-in ones) became color presets: a
+// built-in scheme with your colors over it.
+export function migrateThemes(saved, global) {
+  const stamp = Date.now().toString(36);
+  const made = [];
+  const map = (global.__themeMap = new Map());
+  (saved.customThemes || []).forEach((t, i) => {
+    if (!t?.bg || !t?.fg) return;
+    const colors = { bg: t.bg, fg: t.fg, link: t.link || t.fg, accent: t.accent || t.link || t.fg };
+    const values = { theme: isDark(t) ? 'night' : 'paper', customColors: colors };
+    map.set(t.id, values);
+    made.push({ id: `colors-${stamp}-t${i}`, name: t.name || 'My colors', values });
+  });
+  Object.entries(saved.themeOverrides || {}).forEach(([id, o], i) => {
+    const base = THEMES.find((t) => t.id === id);
+    if (!base || !o) return;
+    const values = { theme: id, customColors: { bg: o.bg, fg: o.fg, link: o.link, accent: o.accent } };
+    made.push({ id: `colors-${stamp}-o${i}`, name: `${base.name} (yours)`, values });
+    if (saved.theme === id) global.customColors = values.customColors;
+  });
+  if (map.has(saved.theme)) { const v = map.get(saved.theme); global.theme = v.theme; global.customColors = v.customColors; }
+  global.userColorPresets = [...(global.userColorPresets || saved.userColorPresets || []), ...made];
+  delete global.customThemes;
+  delete global.themeOverrides;
+}
+
 export function migrateTemplates(saved, global) {
   const old = saved.userTemplates;
   if (!Array.isArray(old) || !old.length) { delete global.userTemplates; return; }
@@ -93,10 +134,12 @@ export function migrateTemplates(saved, global) {
   old.forEach((t, i) => {
     const v = t.settings || {};
     const tv = pick(GROUPS.text.keys, v), cv = pick(GROUPS.colors.keys, v);
+    const own = global.__themeMap?.get(cv.theme);
+    if (own) Object.assign(cv, own);
     if (Object.keys(tv).length) text.push({ id: `ts-${stamp}-${i}`, name: t.name, blurb: t.blurb || '', values: tv });
     if (Object.keys(cv).length) colors.push({ id: `cp-${stamp}-${i}`, name: t.name, blurb: '', values: cv });
   });
-  global.userTextStyles = [...(saved.userTextStyles || []), ...text];
-  global.userColorPresets = [...(saved.userColorPresets || []), ...colors];
+  global.userTextStyles = [...(global.userTextStyles || []), ...text];
+  global.userColorPresets = [...(global.userColorPresets || []), ...colors];
   delete global.userTemplates;
 }

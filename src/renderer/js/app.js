@@ -2,7 +2,7 @@
 import { $, setChildren, el, icon, modal, toast, closeMenus, closeTopModal } from './ui.js';
 import { loadSettings, getSettings, setSettings } from './settings.js';
 import { loadFonts } from './fonts.js';
-import { allThemes, isDark } from './themes.js';
+import { findTheme, isDark } from './themes.js';
 import { allPresets, presetPatch } from './presets.js';
 import * as library from './library.js';
 import * as reader from './reader.js';
@@ -115,10 +115,10 @@ function onMenu(cmd) {
 // ---------- keyboard ----------
 function themeFlip() {
   const s = getSettings();
-  const themes = allThemes(s);
-  const cur = themes.find((t) => t.id === s.theme) || themes[0];
-  if (isDark(cur)) setSettings({ lastDarkTheme: cur.id, theme: s.lastLightTheme || 'paper' });
-  else setSettings({ lastLightTheme: cur.id, theme: s.lastDarkTheme || 'night' });
+  const cur = findTheme(s);
+  // the other side's scheme as it is (changed colors belong to this one)
+  if (isDark(cur)) setSettings({ lastDarkTheme: cur.id, theme: s.lastLightTheme || 'paper', customColors: null });
+  else setSettings({ lastLightTheme: cur.id, theme: s.lastDarkTheme || 'night', customColors: null });
 }
 
 function goToDialog() {

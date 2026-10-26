@@ -340,7 +340,7 @@ export function applyTheme() {
   const s = getSettings();
   let theme = findTheme(s);
   if (s.autoDarkTheme && matchMedia('(prefers-color-scheme: dark)').matches && !isDark(theme)) {
-    theme = findTheme({ ...s, theme: s.autoDarkTheme });
+    theme = findTheme({ ...s, theme: s.autoDarkTheme }, { custom: false });
   }
   R.theme = theme;
   applyChromeTheme(theme);

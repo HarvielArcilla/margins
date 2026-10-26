@@ -1,10 +1,10 @@
 // The reading settings drawer (Aa). Every control writes straight to the
 // settings store, and the open book restyles live.
 import { $, setChildren, el, icon, iconButton, toast, promptDialog, confirmDialog, debounce, syncRange } from './ui.js';
-import { getSettings, setSettings, setBookScope, bookScopeActive, resetSettings, DEFAULTS } from './settings.js';
-import { allThemes, isDark, highlightColors, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.js';
+import { getSettings, setSettings, onSettings, setBookScope, bookScopeActive, resetSettings, DEFAULTS } from './settings.js';
+import { allThemes, findTheme, isDark, highlightColors, HIGHLIGHT_STYLES } from './themes.js';
 import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
-import { GROUPS, presetPatch, snapshot, isActive, userPresets } from './presets.js';
+import { GROUPS, presetPatch, snapshot, isActive, userPresets, currentPreset, presetTheme, presetIsDark } from './presets.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
 import { Curl } from './curl.js';
 import { turnStatus } from './turn-anim.js';
@@ -232,32 +232,79 @@ function fontPicker() {
 // Each kind of preset sits at the top of the tab whose settings it sets:
 // built-ins first, then the reader's own, with a button to save the
 // current settings as a new one.
+// One way of handling presets everywhere: a line saying which one is in
+// use (and whether you've changed it since), what you can do about that,
+// then the presets to choose from.
+const presetFilter = {};
+const lastApplied = {}; // group → the preset chosen last, to tell "changed" from "never chosen"
 function presetBlock(group) {
+  const box = el('div.preset-block', { dataset: { group } });
+  fillPresetBlock(box, group);
+  return box;
+}
+// keep each block's "Using … / Changed from …" line true as settings move
+onSettings((_, keys) => {
+  for (const box of document.querySelectorAll('.preset-block')) {
+    const G = GROUPS[box.dataset.group];
+    if (!keys || keys.some((k) => G.keys.includes(k) || k === G.userKey)) fillPresetBlock(box, box.dataset.group);
+  }
+});
+function fillPresetBlock(box, group) {
   const s = getSettings();
   const G = GROUPS[group];
   const draw = { text: textStyleCard, colors: colorPresetCard, page: layoutCard }[group];
+  const mine = userPresets(group, s);
+  const now = currentPreset(group, s);
+  if (now) lastApplied[group] = now.id; // so an edit after it reads "Changed from …"
+  const last = !now && lastApplied[group] ? [...mine, ...G.builtins].find((p) => p.id === lastApplied[group]) : null;
+  const apply = (p) => { lastApplied[group] = p.id; setSettings(presetPatch(group, p)); render(); };
+  const saveNew = async () => {
+    const name = await promptDialog(`Save as a new ${G.noun}`, 'Name', last ? `${last.name} (mine)` : `My ${G.noun}`);
+    if (!name) return;
+    const id = `${group}-${Date.now().toString(36)}`;
+    setSettings({ [G.userKey]: [...(getSettings()[G.userKey] || []), { id, name, values: snapshot(group, getSettings()) }] }, { scope: 'global' });
+    lastApplied[group] = id;
+    toast(`Saved “${name}”`);
+    render();
+  };
+  const update = (p) => {
+    setSettings({ [G.userKey]: (getSettings()[G.userKey] || []).map((x) => (x.id === p.id ? { ...x, values: snapshot(group, getSettings()) } : x)) }, { scope: 'global' });
+    toast(`Updated “${p.name}”`);
+    render();
+  };
+
+  // what's in use, and what can be done about it
+  const status = now
+    ? el('div.preset-status', el('span', 'Using ', el('b', now.name)), el('span.spacer'),
+      el('button.link-btn', { onclick: saveNew }, 'Save a copy'))
+    : el('div.preset-status.changed', el('span', last ? ['Changed from ', el('b', last.name)] : 'Your own settings'), el('span.spacer'),
+      last?.user ? el('button.link-btn', { onclick: () => update(last) }, 'Update') : null,
+      last ? el('button.link-btn', { onclick: () => apply(last) }, 'Revert') : null,
+      el('button.btn.small.primary', { onclick: saveNew }, icon('plus', 13), 'Save as new'));
+
+  const f = presetFilter[group] || 'all';
+  const shown = [...G.builtins, ...mine].filter((p) => {
+    if (f === 'mine') return p.user;
+    if (f === 'light' || f === 'dark') return presetIsDark(presetPatch(group, p)) === (f === 'dark');
+    return true;
+  });
   const card = (p) => {
     const v = presetPatch(group, p);
     return el('div.preset', {
-      class: `preset preset-${group} ${isActive(group, s, p) ? 'on' : ''}`, title: p.blurb || p.name, role: 'button', tabIndex: 0,
-      onclick: () => { setSettings(v); toast(`${p.name}`); render(); },
+      class: `preset preset-${group} ${now?.id === p.id ? 'on' : ''}`, title: p.blurb || p.name, role: 'button', tabIndex: 0,
+      onclick: () => apply(p), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); apply(p); } },
     }, draw(v, s), el('span.sp-name', p.name), p.blurb ? el('span.sp-blurb', p.blurb) : null,
-    p.user ? manageLinks(G.userKey, p, () => ({ values: snapshot(group, getSettings()) })) : null);
+    p.user ? manageLinks(G.userKey, p) : null);
   };
-  const mine = userPresets(group, s);
-  return [
-    el('div.preset-grid', { class: `preset-grid preset-grid-${group}` }, [...G.builtins, ...mine].map(card)),
-    el('div.row-btns', el('button.btn.small', {
-      onclick: async () => {
-        const name = await promptDialog(`Save this ${G.noun}`, 'Name', `My ${G.noun}`);
-        if (!name) return;
-        const list = getSettings()[G.userKey] || [];
-        setSettings({ [G.userKey]: [...list, { id: `${group}-${Date.now().toString(36)}`, name, values: snapshot(group, getSettings()) }] }, { scope: 'global' });
-        toast(`Saved “${name}”`);
-        render();
-      },
-    }, icon('plus', 14), `Save current as a ${G.noun}`)),
-  ];
+  const parts = [
+    status,
+    G.filters && (mine.length || G.filters.length > 2) ? el('div.seg.preset-filter', G.filters.map(([id, label]) => el('button', {
+      class: f === id ? 'on' : '', onclick: () => { presetFilter[group] = id; render(); },
+    }, label, id === 'mine' ? ` (${mine.length})` : ''))) : null,
+    shown.length ? el('div.preset-grid', { class: `preset-grid preset-grid-${group}` }, shown.map(card))
+      : el('p.hint', `None saved yet. Change the settings below, then use Save as new.`),
+  ].filter(Boolean);
+  setChildren(box, ...parts);
 }
 
 // a line of text set the way the style sets it, in the current colors
@@ -266,11 +313,11 @@ function textStyleCard(v) {
     'The lamp threw a soft circle of light across the open page.');
 }
 
-// the theme's page and ink, with its paper
-function colorPresetCard(v, s) {
-  const th = allThemes(s).find((t) => t.id === v.theme) || allThemes(s)[0];
+// the scheme's page and ink, dimmed and warmed as the preset sets them
+function colorPresetCard(v) {
+  const th = presetTheme(v);
   const dim = 1 - (v.brightness ?? 100) / 100;
-  return el('span.ps-colors', { style: { background: th.bg, color: th.fg, '--ink': th.link, filter: dim > 0 ? `brightness(${1 - dim})` : '' } },
+  return el('span.ps-colors', { style: { background: th.bg, color: th.fg, '--ink': th.link, '--acc': th.accent || th.link, filter: dim > 0 ? `brightness(${1 - dim})` : '' } },
     el('b', 'Aa'), el('i'), el('i'), el('i'),
     v.warmth ? el('span.ps-warm', { style: { opacity: (v.warmth / 100) * 0.35 } }) : null);
 }
@@ -286,34 +333,23 @@ function layoutCard(v) {
   }, page(), two ? page() : null));
 }
 
-// Update / Rename / Delete for something the reader saved.
-function manageLinks(key, item, snapshot) {
+// Rename and delete for something you saved (Update is in the line above
+// the presets, for the one in use).
+function manageLinks(key, item) {
   const list = () => getSettings()[key] || [];
   const put = (next) => { setSettings({ [key]: next }, { scope: 'global' }); render(); };
   const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
   return el('span.manage',
-    el('button.link-btn', { title: 'Replace with your current settings', onclick: stop(() => { put(list().map((x) => (x.id === item.id ? { ...x, ...snapshot() } : x))); toast(`Updated “${item.name}”`); }) }, 'Update'),
     el('button.link-btn', { onclick: stop(async () => { const name = await promptDialog('Rename', 'Name', item.name); if (name) put(list().map((x) => (x.id === item.id ? { ...x, name } : x))); }) }, 'Rename'),
     el('button.link-btn.danger', { onclick: stop(async () => { if (await confirmDialog(`Delete “${item.name}”?`, 'This can’t be undone.', 'Delete', true)) put(list().filter((x) => x.id !== item.id)); }) }, 'Delete'));
 }
 
 function themeTab() {
   const s = getSettings();
-  const themes = allThemes(s);
-  const light = themes.filter((t) => !isDark(t)), dark = themes.filter((t) => isDark(t));
-  const card = (t) => el('button.theme-card', {
-    class: `theme-card ${s.theme === t.id ? 'on' : ''}`,
-    style: { background: t.bg, color: t.fg, '--tl': t.link },
-    title: t.name,
-    onclick: () => { setSettings({ theme: t.id }); render(); },
-  }, el('span.theme-aa', 'Aa'), el('span.theme-name', t.name),
-  t.edited ? el('span.theme-dot', { title: 'Colors changed' }) : null,
-  t.custom ? el('span.theme-x', { title: 'Delete theme', onclick: (e) => { e.stopPropagation(); setSettings({ customThemes: s.customThemes.filter((x) => x.id !== t.id), theme: s.theme === t.id ? 'paper' : s.theme }); render(); } }, icon('x', 12)) : null);
+  const dark = allThemes().filter((t) => isDark(t));
   return [
     section('Color presets', presetBlock('colors')),
-    section('Light themes', el('div.theme-grid', light.map(card))),
-    section('Dark themes', el('div.theme-grid', dark.map(card))),
-    section('Theme colors', themeColorEditor()),
+    section('Colors', themeColorEditor()),
     section('Highlight colors', highlightPalette()),
     section('Bars & desk',
       colorChoice('barColor', 'Top & bottom bars'),
@@ -325,7 +361,7 @@ function themeTab() {
       range('warmth', 'Warmth (night light)', 0, 100, 1, pct),
       range('vignette', 'Vignette', 0, 100, 1, pct),
       toggleCtl('keepPublisherColors', 'Keep the book’s own text colors'),
-      select('autoDarkTheme', 'When the system is in dark mode use', [['', 'Same theme (off)'], ...dark.map((t) => [t.id, t.name])])),
+      select('autoDarkTheme', 'When the system is in dark mode use', [['', 'The same colors (off)'], ...dark.map((t) => [t.id, t.name])])),
     section('Images',
       range('dimImages', 'Dim images', 0, 60, 1, pct),
       toggleCtl('invertImagesInDark', 'Invert images on dark themes', 'Good for black-on-white diagrams.'),
@@ -333,39 +369,27 @@ function themeTab() {
   ];
 }
 
-// The colors of the current theme, edited in place: a built-in theme keeps
-// its original to restore; any theme can be saved as a new one.
+// The four colors in use, changed in place. They apply as you pick, and
+// the line at the top of Color presets shows they've changed (with Save as
+// new, and Revert).
 function themeColorEditor() {
   const s = getSettings();
-  const base = allThemes(s).find((t) => t.id === s.theme) || allThemes(s)[0];
-  const draft = { bg: base.bg, fg: base.fg, link: base.link, accent: base.accent || base.link };
+  const cur = findTheme(s);
+  const draft = { bg: cur.bg, fg: cur.fg, link: cur.link, accent: cur.accent || cur.link };
   const preview = el('div.theme-preview', el('strong', 'The quick brown fox'), ' jumps over the ', el('a', 'lazy dog'), '.');
   const paint = () => { Object.assign(preview.style, { background: draft.bg, color: draft.fg }); preview.querySelector('a').style.color = draft.link; };
   paint();
-  const save = debounce(() => {
-    const g = getSettings();
-    if (base.custom) setSettings({ customThemes: g.customThemes.map((t) => (t.id === base.id ? { ...t, ...draft } : t)) }, { scope: 'global' });
-    else setSettings({ themeOverrides: { ...g.themeOverrides, [base.id]: { ...draft } } }, { scope: 'global' });
-  }, 120);
-  const picker = (k, label) => el('label.color-field', el('input', { type: 'color', value: draft[k], oninput: (e) => { draft[k] = e.target.value; paint(); save(); }, onchange: () => render() }), label);
+  const push = debounce(() => setSettings({ customColors: { ...draft } }), 40);
+  const picker = (k, label) => el('label.color-field', el('input', {
+    type: 'color', value: draft[k],
+    // some systems only report the final pick, so listen to both
+    oninput: (e) => { draft[k] = e.target.value; paint(); push(); },
+    onchange: (e) => { draft[k] = e.target.value; paint(); setSettings({ customColors: { ...draft } }); render(); },
+  }), label);
   return el('div',
-    el('p.hint.lead', `Editing ${base.name}. Changes apply as you pick.`),
     preview,
     el('div.color-fields', picker('bg', 'Page'), picker('fg', 'Text'), picker('link', 'Links'), picker('accent', 'Accent')),
-    el('div.row-btns',
-      el('button.btn.small', {
-        onclick: async () => {
-          const name = await promptDialog('Save as a new theme', 'Name', `${base.name} copy`);
-          if (!name) return;
-          const t = { id: `custom-${Date.now().toString(36)}`, name, ...draft };
-          setSettings({ customThemes: [...getSettings().customThemes, t], theme: t.id }, { scope: 'global' });
-          setSettings({ theme: t.id });
-          render();
-        },
-      }, icon('plus', 14), 'Save as new theme'),
-      base.edited ? el('button.btn.small', {
-        onclick: () => { const o = { ...getSettings().themeOverrides }; delete o[base.id]; setSettings({ themeOverrides: o }, { scope: 'global' }); render(); },
-      }, 'Restore original colors') : null));
+    s.customColors ? el('div.row-btns', el('button.btn.small', { onclick: () => { setSettings({ customColors: null }); render(); } }, `Back to ${cur.name}’s own colors`)) : null);
 }
 
 // Auto (worked out from the page color), a few presets, or any color.
@@ -379,7 +403,7 @@ function colorChoice(key, label, hint) {
   return el('div.ctl',
     el('label', label),
     el('div.desk-row',
-      el('button.desk-swatch.auto', { class: `desk-swatch auto ${!s[key] ? 'on' : ''}`, title: 'Worked out from the theme', onclick: () => { setSettings({ [key]: '' }); render(); } }, 'Auto'),
+      el('button.desk-swatch.auto', { class: `desk-swatch auto ${!s[key] ? 'on' : ''}`, title: 'Worked out from the page color', onclick: () => { setSettings({ [key]: '' }); render(); } }, 'Auto'),
       presets.map(swatch),
       el('label.desk-swatch.custom', { title: 'Any color', class: `desk-swatch custom ${s[key] && !presets.includes(s[key]) ? 'on' : ''}`, style: { '--c': s[key] || '#888888' } },
         el('input', { type: 'color', value: s[key] || '#888888', oninput: (e) => setSettings({ [key]: e.target.value }), onchange: () => render() }))),
@@ -546,7 +570,7 @@ async function tryAnimation() {
 // ---------- paper ----------
 function paperPicker() {
   const s = getSettings();
-  const theme = allThemes(s).find((t) => t.id === s.theme) || allThemes(s)[0];
+  const theme = findTheme(s);
   const dark = isDark(theme);
   const card = (p) => {
     const url = p.id === 'custom' ? (s.paperImage ? `app://reader/usertextures/${encodeURIComponent(s.paperImage)}` : null)
@@ -629,13 +653,12 @@ function zoneDiagram(layout, invert) {
   return el('div.zone-wrap', grid, el('div.zone-legend', el('span.z-prev', 'Back'), el('span.z-menu', 'Menu'), el('span.z-next', 'Forward')));
 }
 
-// Your presets and themes travel as one JSON file.
+// Your presets travel as one JSON file.
 async function exportPresets() {
   const s = getSettings();
   const data = {
-    format: 'margins-presets', version: 2,
+    format: 'margins-presets', version: 3,
     textStyles: s.userTextStyles || [], colorPresets: s.userColorPresets || [], layouts: s.userLayouts || [],
-    themes: s.customThemes || [],
   };
   const p = await window.api.file.save({ defaultPath: 'margins-presets.json', content: JSON.stringify(data, null, 2), filters: [{ name: 'Margins presets', extensions: ['json'] }] });
   if (p) toast('Exported');
@@ -649,30 +672,30 @@ async function importPresets() {
   if (!data || !/^margins-(presets|templates)$/.test(data.format)) { toast('That file isn’t a Margins presets file'); return; }
   const s = getSettings();
   const stamp = Date.now().toString(36);
-  // fresh ids, so importing twice (or from a friend) never collides
-  const themeIds = new Map();
-  const themes = (data.themes || []).filter((t) => t?.bg && t?.fg).map((t, i) => {
-    const id = `custom-${stamp}-${i}`;
-    themeIds.set(t.id, id);
-    return { id, name: String(t.name || 'Imported theme'), bg: t.bg, fg: t.fg, link: t.link || t.fg, accent: t.accent || t.link || t.fg };
-  });
+  // older files carried own color themes separately: they become the colors
+  // of the presets that used them (and presets of their own)
+  const themes = new Map((data.themes || []).filter((t) => t?.bg && t?.fg).map((t) => [t.id, {
+    theme: isDark(t) ? 'night' : 'paper', customColors: { bg: t.bg, fg: t.fg, link: t.link || t.fg, accent: t.accent || t.link || t.fg }, name: t.name,
+  }]));
   const clean = (group, list, prefix) => (list || []).filter((p) => p && (p.values || p.settings)).map((p, i) => {
     const v = snapshot(group, p.values || p.settings);
-    if (v.theme && themeIds.has(v.theme)) v.theme = themeIds.get(v.theme);
+    const own = themes.get(v.theme);
+    if (own) { v.theme = own.theme; v.customColors = own.customColors; }
     return { id: `${prefix}-${stamp}-${i}`, name: String(p.name || 'Imported'), values: v };
   }).filter((p) => Object.keys(p.values).length);
-  // the older templates file mixed text and color
   const textStyles = clean('text', [...(data.textStyles || []), ...(data.templates || [])], 'text');
-  const colorPresets = clean('colors', [...(data.colorPresets || []), ...(data.templates || [])], 'colors');
+  const colorPresets = [
+    ...clean('colors', [...(data.colorPresets || []), ...(data.templates || [])], 'colors'),
+    ...[...themes.values()].map((t, i) => ({ id: `colors-${stamp}-t${i}`, name: String(t.name || 'Imported colors'), values: { theme: t.theme, customColors: t.customColors } })),
+  ];
   const layouts = clean('page', data.layouts, 'page');
   setSettings({
-    customThemes: [...(s.customThemes || []), ...themes],
     userTextStyles: [...(s.userTextStyles || []), ...textStyles],
     userColorPresets: [...(s.userColorPresets || []), ...colorPresets],
     userLayouts: [...(s.userLayouts || []), ...layouts],
   }, { scope: 'global' });
   const n = textStyles.length + colorPresets.length + layouts.length;
-  toast(`Imported ${n} preset${n === 1 ? '' : 's'}${themes.length ? ` and ${themes.length} theme${themes.length === 1 ? '' : 's'}` : ''}`);
+  toast(`Imported ${n} preset${n === 1 ? '' : 's'}`);
   render();
 }
 
@@ -724,20 +747,20 @@ function aidsTab() {
 
 function appTab() {
   const s = getSettings();
-  const mine = (s.userTextStyles || []).length + (s.userColorPresets || []).length + (s.userLayouts || []).length + (s.customThemes || []).length;
+  const mine = (s.userTextStyles || []).length + (s.userColorPresets || []).length + (s.userLayouts || []).length;
   return [
     section('Your presets',
-      el('p.hint.lead', 'Back up or share your text styles, color presets, page layouts and themes as one file.'),
+      el('p.hint.lead', 'Back up or share your text styles, color presets and page layouts as one file.'),
       el('div.row-btns',
         el('button.btn.small', { onclick: importPresets }, icon('upload', 14), 'Import…'),
         el('button.btn.small', { disabled: !mine, onclick: exportPresets }, icon('download', 14), 'Export yours…'))),
     graphicsSection(),
     section('Reset',
-      el('p.hint.lead', 'Your own presets, themes and color changes are kept.'),
+      el('p.hint.lead', 'Your own presets and highlight colors are kept.'),
       el('div.row-btns', el('button.btn.small.danger', {
         onclick: async () => {
-          if (!(await confirmDialog('Reset all reading settings?', 'Your own presets, themes and color changes are kept.', 'Reset', true))) return;
-          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'customHighlightColors', 'userLayouts', 'userTextStyles', 'userColorPresets', 'themeOverrides', 'highlightOverrides'].includes(k)));
+          if (!(await confirmDialog('Reset all reading settings?', 'Your own presets and highlight colors are kept.', 'Reset', true))) return;
+          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customHighlightColors', 'userLayouts', 'userTextStyles', 'userColorPresets', 'highlightOverrides'].includes(k)));
           render();
         },
       }, 'Reset everything to defaults'))),

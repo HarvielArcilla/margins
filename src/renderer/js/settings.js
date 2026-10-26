@@ -1,7 +1,7 @@
 // Reading settings: defaults, persistence, and the per-book layer.
 // Global settings live in settings.json; a book can carry its own overrides
 // (book.settings) for the reading keys below, which win while it is open.
-import { migrateTemplates } from './presets.js';
+import { migrateTemplates, migrateThemes } from './presets.js';
 
 export const DEFAULTS = {
   // Typography
@@ -40,7 +40,6 @@ export const DEFAULTS = {
 
   // Colors & atmosphere
   theme: 'paper',
-  customThemes: [],
   brightness: 100, // 30-100
   warmth: 0, // 0-100 night-light overlay
   paperTexture: 35, // 0-100 strength of the paper texture
@@ -57,7 +56,7 @@ export const DEFAULTS = {
   userLayouts: [], // saved page layouts
   userTextStyles: [], // saved text styles
   userColorPresets: [], // saved color presets
-  themeOverrides: {}, // built-in themes whose colors the reader changed: id → { bg, fg, link, accent }
+  customColors: null, // { bg, fg, link, accent } changed over the chosen scheme, or null
   barLineColor: '', // the line between the bars and the page; '' = worked out from the bar color
   creaseDepth: 45, // 0-100: how dark the crease between two pages is
   vignette: 0, // 0-100
@@ -131,7 +130,7 @@ export const DEFAULTS = {
 
 // Keys that a book may override (everything visual about reading).
 export const BOOK_KEYS = Object.keys(DEFAULTS).filter((k) =>
-  !['customThemes', 'customHighlightColors', 'highlightOverrides', 'userLayouts', 'userTextStyles', 'userColorPresets', 'themeOverrides', 'libraryView', 'librarySort', 'libraryCardSize',
+  !['customHighlightColors', 'highlightOverrides', 'userLayouts', 'userTextStyles', 'userColorPresets', 'libraryView', 'librarySort', 'libraryCardSize',
     'dailyGoalMinutes', 'idleSeconds', 'defaultWpm', 'rememberPerBook'].includes(k));
 
 let global = { ...DEFAULTS };
@@ -152,9 +151,11 @@ export async function loadSettings() {
     if (!('deskY' in saved)) global.deskY = Math.round(((saved.pageInsetY ?? 0) / 10)) ;
     delete global.pageWidth; delete global.pageInsetY;
   }
-  if ('userTemplates' in saved) {
-    migrateTemplates(saved, global);
-    window.api.settings.set(global); // write the split right away, so it happens once
+  if ('userTemplates' in saved || 'customThemes' in saved || 'themeOverrides' in saved) {
+    migrateThemes(saved, global);
+    if ('userTemplates' in saved) migrateTemplates(saved, global);
+    delete global.__themeMap;
+    window.api.settings.set(global); // write the change right away, so it happens once
   }
   const renamed = { peel: 'curl', blur: 'fade' };
   if (renamed[global.pageAnimation]) global.pageAnimation = renamed[global.pageAnimation];
