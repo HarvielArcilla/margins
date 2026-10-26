@@ -209,10 +209,19 @@ vec4 surface() {
     // roll sits under the part already turned over: the front darkens
     // smoothly into the curl (whichever corner leads), the underside
     // brightens as it comes back down flat.
-    float light = mix(0.9, 1.0, diff);
-    if (face >= 0.0) shade = light * (1.0 - 0.3 * smoothstep(0.0, 0.5, roll));
-    else shade = light * mix(0.78, 1.0, smoothstep(0.5, 1.0, roll));
-    spec = 0.045 * exp(-pow((th - 1.5708) / 0.35, 2.0));
+    // the same light on both sides of the crest, so nothing jumps there
+    float light = mix(0.9, 1.0, clamp(abs(dot(n, L)) / L.z, 0.0, 1.0));
+    float crest = smoothstep(0.0, 0.5, roll);       // 0 at the fold, 1 at the crest
+    float landing = smoothstep(0.5, 1.0, roll);     // 0 at the crest, 1 lying flat again
+    if (face >= 0.0) shade = light * (1.0 - 0.3 * crest);
+    else shade = light * mix(0.7, 1.0, landing);
+    // The sheen sits on the crest but is measured on screen: how far this
+    // point appears from the crest, r(1 - sin th), against a width that
+    // grows with the curl. Near the crest th changes very fast across a few
+    // pixels, so measuring in th made it a thin, hard line.
+    float fromCrest = r * (1.0 - sin(th));
+    float width = 6.0 + r * 0.45;
+    spec = 0.05 * exp(-(fromCrest * fromCrest) / (width * width)) * smoothstep(4.0, 24.0, r);
   }
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
   float o = flippedOutside(vP);
