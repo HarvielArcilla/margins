@@ -1,6 +1,7 @@
 // Reading settings: defaults, persistence, and the per-book layer.
 // Global settings live in settings.json; a book can carry its own overrides
 // (book.settings) for the reading keys below, which win while it is open.
+import { migrateTemplates } from './presets.js';
 
 export const DEFAULTS = {
   // Typography
@@ -54,6 +55,8 @@ export const DEFAULTS = {
   barColor: '', // top & bottom bars; '' = a shade darker than the page
   pageRadius: 0, // px: rounded outer corners of the page (with a desk)
   userLayouts: [], // saved page layouts
+  userTextStyles: [], // saved text styles
+  userColorPresets: [], // saved color presets
   themeOverrides: {}, // built-in themes whose colors the reader changed: id → { bg, fg, link, accent }
   barLineColor: '', // the line between the bars and the page; '' = worked out from the bar color
   creaseDepth: 45, // 0-100: how dark the crease between two pages is
@@ -65,7 +68,7 @@ export const DEFAULTS = {
   // Page turning
   pageAnimation: 'curl', // none | curl | flip | slide | push | cover | fade | zoom | rise
   animationMs: 280,
-  curlFrom: 'bottom', // bottom | middle | top: which corner leads the page curl
+  curlFrom: 'auto', // auto (nearest the click) | bottom | middle | top: which corner leads the curl
   clickZones: 'thirds', // thirds | halves | left-third | all-next | top-bottom | kindle | off
   invertZones: false,
   wheelTurns: true,
@@ -124,12 +127,11 @@ export const DEFAULTS = {
   libraryCardSize: 160,
   rememberPerBook: false,
 
-  userTemplates: [],
 };
 
 // Keys that a book may override (everything visual about reading).
 export const BOOK_KEYS = Object.keys(DEFAULTS).filter((k) =>
-  !['customThemes', 'userTemplates', 'customHighlightColors', 'highlightOverrides', 'userLayouts', 'themeOverrides', 'libraryView', 'librarySort', 'libraryCardSize',
+  !['customThemes', 'customHighlightColors', 'highlightOverrides', 'userLayouts', 'userTextStyles', 'userColorPresets', 'themeOverrides', 'libraryView', 'librarySort', 'libraryCardSize',
     'dailyGoalMinutes', 'idleSeconds', 'defaultWpm', 'rememberPerBook'].includes(k));
 
 let global = { ...DEFAULTS };
@@ -149,6 +151,10 @@ export async function loadSettings() {
     if (!('deskX' in saved)) global.deskX = Math.max(0, (100 - (saved.pageWidth ?? 100)) / 2);
     if (!('deskY' in saved)) global.deskY = Math.round(((saved.pageInsetY ?? 0) / 10)) ;
     delete global.pageWidth; delete global.pageInsetY;
+  }
+  if ('userTemplates' in saved) {
+    migrateTemplates(saved, global);
+    window.api.settings.set(global); // write the split right away, so it happens once
   }
   const renamed = { peel: 'curl', blur: 'fade' };
   if (renamed[global.pageAnimation]) global.pageAnimation = renamed[global.pageAnimation];

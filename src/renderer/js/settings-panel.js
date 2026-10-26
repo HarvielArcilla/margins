@@ -3,9 +3,8 @@
 import { $, setChildren, el, icon, iconButton, toast, promptDialog, confirmDialog, debounce, syncRange } from './ui.js';
 import { getSettings, setSettings, setBookScope, bookScopeActive, resetSettings, DEFAULTS } from './settings.js';
 import { allThemes, isDark, highlightColors, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.js';
-import { BUILTIN_LAYOUTS, layoutOf, layoutPatch, matchesLayout } from './layouts.js';
 import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
-import { BUILTIN_TEMPLATES, TEMPLATE_KEYS, snapshotTemplate, templatePatch } from './templates.js';
+import { GROUPS, presetPatch, snapshot, isActive, userPresets } from './presets.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
 import { Curl } from './curl.js';
 import { turnStatus } from './turn-anim.js';
@@ -29,14 +28,13 @@ const TABS = [
   ['theme', 'Colors', 'sun', 'Themes and every color'],
   ['controls', 'Turning', 'keyboard', 'Animation, clicks, keys and hands-free'],
   ['aids', 'Aids', 'focus', 'Reading aids: highlighting, read aloud, ruler'],
-  ['templates', 'Templates', 'star', 'Style templates and page layouts'],
   ['app', 'App', 'gear', 'Display and reset'],
 ];
 const TAB_FNS = () => ({
   text: textTab, page: pageTab, theme: themeTab, controls: controlsTab,
-  aids: aidsTab, templates: templatesTab, app: appTab,
+  aids: aidsTab, app: appTab,
 });
-const OLD_TABS = { spacing: 'text', more: 'aids' };
+const OLD_TABS = { spacing: 'text', more: 'aids', templates: 'text' };
 
 // ---------- search ----------
 // Typing in the search box shows matching settings from every tab at once,
@@ -162,6 +160,7 @@ function section(title, ...kids) { return el('section.set-sec', el('h3', title),
 function textTab() {
   const s = getSettings();
   return [
+    section('Text styles', presetBlock('text')),
     section('Font', fontPicker()),
     section('Size & weight',
       range('fontSize', 'Font size', 10, 48, 1, px),
@@ -229,26 +228,62 @@ function fontPicker() {
       }, icon('search', 14), systemFontsLoaded() ? 'Installed fonts listed' : 'Show installed fonts')));
 }
 
-// Page layouts, each drawn as a little window: the desk, the page (or open
-// spread) with its corners, margins and crease.
-function layoutGrid(list) {
+// ---------- presets ----------
+// Each kind of preset sits at the top of the tab whose settings it sets:
+// built-ins first, then the reader's own, with a button to save the
+// current settings as a new one.
+function presetBlock(group) {
   const s = getSettings();
+  const G = GROUPS[group];
+  const draw = { text: textStyleCard, colors: colorPresetCard, page: layoutCard }[group];
   const card = (p) => {
-    const v = { ...layoutPatch(p) };
-    const two = v.spread !== 'none';
-    const page = () => el('span.lp-page', { style: { '--mx': `${Math.max(2, v.marginH / 10)}px`, '--my': `${Math.max(2, v.marginV / 8)}px` } },
-      el('i'), el('i'), el('i'), el('i'), el('i'));
-    const sheet = el('span.lp-sheet', {
-      class: `lp-sheet ${two && v.spineShadow ? 'crease' : ''}`,
-      style: { '--dx': `${v.deskX}%`, '--dy': `${v.deskY * 1.6}%`, '--r': `${Math.min(8, v.pageRadius / 3)}px`, '--cd': v.creaseDepth / 100 },
-    }, page(), two ? page() : null);
-    return el('div.lp-card', {
-      class: `lp-card ${matchesLayout(s, v) ? 'on' : ''}`, title: p.blurb, role: 'button', tabIndex: 0,
-      onclick: () => { setSettings(layoutPatch(p)); toast(`Page layout: ${p.name}`); render(); },
-    }, el('span.lp-win', sheet), el('span.sp-name', p.name), el('span.sp-blurb', p.blurb),
-    p.user ? manageLinks('userLayouts', p, () => ({ values: layoutOf(getSettings()) })) : null);
+    const v = presetPatch(group, p);
+    return el('div.preset', {
+      class: `preset preset-${group} ${isActive(group, s, p) ? 'on' : ''}`, title: p.blurb || p.name, role: 'button', tabIndex: 0,
+      onclick: () => { setSettings(v); toast(`${p.name}`); render(); },
+    }, draw(v, s), el('span.sp-name', p.name), p.blurb ? el('span.sp-blurb', p.blurb) : null,
+    p.user ? manageLinks(G.userKey, p, () => ({ values: snapshot(group, getSettings()) })) : null);
   };
-  return el('div.sp-grid', list.map(card));
+  const mine = userPresets(group, s);
+  return [
+    el('div.preset-grid', { class: `preset-grid preset-grid-${group}` }, [...G.builtins, ...mine].map(card)),
+    el('div.row-btns', el('button.btn.small', {
+      onclick: async () => {
+        const name = await promptDialog(`Save this ${G.noun}`, 'Name', `My ${G.noun}`);
+        if (!name) return;
+        const list = getSettings()[G.userKey] || [];
+        setSettings({ [G.userKey]: [...list, { id: `${group}-${Date.now().toString(36)}`, name, values: snapshot(group, getSettings()) }] }, { scope: 'global' });
+        toast(`Saved “${name}”`);
+        render();
+      },
+    }, icon('plus', 14), `Save current as a ${G.noun}`)),
+  ];
+}
+
+// a line of text set the way the style sets it, in the current colors
+function textStyleCard(v) {
+  return el('span.ps-text', { style: { fontFamily: fontStack(v.font) || 'serif', fontWeight: v.fontWeight, lineHeight: Math.min(1.9, v.lineHeight), letterSpacing: `${v.letterSpacing}em`, wordSpacing: `${v.wordSpacing}em`, textAlign: v.textAlign === 'justify' ? 'justify' : 'left' } },
+    'The lamp threw a soft circle of light across the open page.');
+}
+
+// the theme's page and ink, with its paper
+function colorPresetCard(v, s) {
+  const th = allThemes(s).find((t) => t.id === v.theme) || allThemes(s)[0];
+  const dim = 1 - (v.brightness ?? 100) / 100;
+  return el('span.ps-colors', { style: { background: th.bg, color: th.fg, '--ink': th.link, filter: dim > 0 ? `brightness(${1 - dim})` : '' } },
+    el('b', 'Aa'), el('i'), el('i'), el('i'),
+    v.warmth ? el('span.ps-warm', { style: { opacity: (v.warmth / 100) * 0.35 } }) : null);
+}
+
+// a tiny window: the desk, the page (or open spread), its corners, margins and crease
+function layoutCard(v) {
+  const two = v.spread !== 'none';
+  const page = () => el('span.lp-page', { style: { '--mx': `${Math.max(2, v.marginH / 10)}px`, '--my': `${Math.max(2, v.marginV / 8)}px` } },
+    el('i'), el('i'), el('i'), el('i'), el('i'));
+  return el('span.lp-win', el('span.lp-sheet', {
+    class: `lp-sheet ${two && v.spineShadow ? 'crease' : ''}`,
+    style: { '--dx': `${v.deskX}%`, '--dy': `${v.deskY * 1.6}%`, '--r': `${Math.min(8, v.pageRadius / 3)}px`, '--cd': v.creaseDepth / 100 },
+  }, page(), two ? page() : null));
 }
 
 // Update / Rename / Delete for something the reader saved.
@@ -275,6 +310,7 @@ function themeTab() {
   t.edited ? el('span.theme-dot', { title: 'Colors changed' }) : null,
   t.custom ? el('span.theme-x', { title: 'Delete theme', onclick: (e) => { e.stopPropagation(); setSettings({ customThemes: s.customThemes.filter((x) => x.id !== t.id), theme: s.theme === t.id ? 'paper' : s.theme }); render(); } }, icon('x', 12)) : null);
   return [
+    section('Color presets', presetBlock('colors')),
     section('Light themes', el('div.theme-grid', light.map(card))),
     section('Dark themes', el('div.theme-grid', dark.map(card))),
     section('Theme colors', themeColorEditor()),
@@ -355,6 +391,7 @@ function pageTab() {
   const paged = s.flow === 'paginated';
   const spread = paged && s.spread !== 'none';
   return [
+    section('Page layouts', presetBlock('page')),
     section('Reading mode',
       seg('flow', 'Show the book as', [['paginated', 'Pages', 'layers'], ['scrolled', 'Scroll chapter', 'scroll'], ['continuous', 'Endless scroll', 'rows']]),
       paged ? seg('spread', 'Pages side by side', [['auto', 'Auto'], ['none', 'One page'], ['always', 'Two pages']]) : null,
@@ -390,8 +427,8 @@ function animationSection() {
     el('div.anim-grid', ANIMATIONS.map((a) => animCard(a, s.pageAnimation === a.id))),
     el('div.row-btns', el('button.btn.small', { disabled: !R.open || s.flow !== 'paginated', onclick: tryAnimation }, icon('play', 13), 'Try it on this page')),
     range('animationMs', 'Animation speed', 100, 900, 20, (v) => (v < 200 ? 'Quick' : v < 400 ? 'Normal' : v < 650 ? 'Relaxed' : 'Slow')),
-    s.pageAnimation === 'curl' ? seg('curlFrom', 'Curl from', [['bottom', 'Bottom corner'], ['middle', 'Straight edge'], ['top', 'Top corner']]) : null,
-    s.pageAnimation === 'curl' ? el('p.hint', 'You can also drag the page: press in the margin beside the text and pull toward the spine.') : null,
+    s.pageAnimation === 'curl' ? seg('curlFrom', 'Curl from', [['auto', 'Where I click'], ['bottom', 'Bottom'], ['middle', 'Straight'], ['top', 'Top']]) : null,
+    s.pageAnimation === 'curl' ? el('p.hint', 'You can also drag the page: press in the margin beside the text and pull. It follows your pointer, so moving up or down tilts the fold.') : null,
     s.flow !== 'paginated' ? el('p.hint', 'Animations apply when the book is shown as pages (Page tab).') : null);
 }
 
@@ -592,71 +629,24 @@ function zoneDiagram(layout, invert) {
   return el('div.zone-wrap', grid, el('div.zone-legend', el('span.z-prev', 'Back'), el('span.z-menu', 'Menu'), el('span.z-next', 'Forward')));
 }
 
-function templatesTab() {
-  const s = getSettings();
-  const userT = s.userTemplates || [], userL = (s.userLayouts || []).map((p) => ({ ...p, user: true, blurb: p.blurb || 'Your layout' }));
-  const active = (t) => Object.entries(templatePatch(t)).every(([k, v]) => JSON.stringify(s[k]) === JSON.stringify(v));
-  const apply = (t) => { setSettings(templatePatch(t)); toast(`Style: ${t.name}`); render(); };
-  const card = (t) => {
-    const th = allThemes(s).find((x) => x.id === t.settings.theme) || allThemes(s)[0];
-    return el('div.tpl-card', { class: `tpl-card ${active(t) ? 'on' : ''}`, role: 'button', tabIndex: 0, onclick: () => apply(t) },
-      el('div.tpl-preview', { style: { background: th.bg, color: th.fg, fontFamily: fontStack(t.settings.font) || 'serif', lineHeight: t.settings.lineHeight || 1.5, textAlign: t.settings.textAlign === 'justify' ? 'justify' : 'left' } },
-        el('b', t.name), el('span', ' — The lamp threw a soft circle of light across the open page.')),
-      el('div.tpl-meta', el('span', t.blurb),
-        t.user ? manageLinks('userTemplates', t, () => {
-          const n = snapshotTemplate(getSettings(), t.name);
-          return { settings: n.settings, blurb: n.blurb };
-        }) : null));
-  };
-  const saveStyle = async () => {
-    const name = await promptDialog('Save style template', 'Name', 'My style');
-    if (!name) return;
-    setSettings({ userTemplates: [...(getSettings().userTemplates || []), snapshotTemplate(getSettings(), name)] }, { scope: 'global' });
-    toast(`Saved “${name}”`);
-    render();
-  };
-  const saveLayout = async () => {
-    const name = await promptDialog('Save page layout', 'Name', 'My layout');
-    if (!name) return;
-    setSettings({ userLayouts: [...(getSettings().userLayouts || []), { id: `lay-${Date.now().toString(36)}`, name, values: layoutOf(getSettings()) }] }, { scope: 'global' });
-    toast(`Saved “${name}”`);
-    render();
-  };
-  return [
-    section('Save your setup',
-      el('p.hint.lead', 'A style template keeps fonts, text spacing, colors, atmosphere and page turning. A page layout keeps one or two pages, margins, line length, desk, corners and crease. Save either, and switch between them in one click.'),
-      el('div.row-btns',
-        el('button.btn.small.primary', { onclick: saveStyle }, icon('plus', 14), 'Save style template'),
-        el('button.btn.small.primary', { onclick: saveLayout }, icon('plus', 14), 'Save page layout')),
-      el('div.row-btns',
-        el('button.btn.small', { onclick: importTemplates }, icon('upload', 14), 'Import…'),
-        el('button.btn.small', { disabled: !userT.length && !userL.length && !(s.customThemes || []).length, onclick: exportTemplates }, icon('download', 14), 'Export yours…'))),
-    section('Your style templates', userT.length ? el('div.tpl-grid', userT.map((t) => card({ ...t, user: true }))) : el('p.hint', 'Nothing saved yet. Set things up the way you like, then use Save style template.')),
-    section('Your page layouts', userL.length ? layoutGrid(userL) : el('p.hint', 'Nothing saved yet. Arrange the page the way you like, then use Save page layout.')),
-    section('Built-in style templates', el('div.tpl-grid', BUILTIN_TEMPLATES.map(card))),
-    section('Built-in page layouts', layoutGrid(BUILTIN_LAYOUTS)),
-  ];
-}
-
-// Templates, layouts and the custom themes they use travel as one JSON file.
-async function exportTemplates() {
+// Your presets and themes travel as one JSON file.
+async function exportPresets() {
   const s = getSettings();
   const data = {
-    format: 'margins-templates', version: 1,
-    templates: s.userTemplates || [],
-    layouts: s.userLayouts || [],
-    themes: s.customThemes || [], // your own color themes, which templates may use
+    format: 'margins-presets', version: 2,
+    textStyles: s.userTextStyles || [], colorPresets: s.userColorPresets || [], layouts: s.userLayouts || [],
+    themes: s.customThemes || [],
   };
-  const p = await window.api.file.save({ defaultPath: 'margins-templates.json', content: JSON.stringify(data, null, 2), filters: [{ name: 'Margins templates', extensions: ['json'] }] });
+  const p = await window.api.file.save({ defaultPath: 'margins-presets.json', content: JSON.stringify(data, null, 2), filters: [{ name: 'Margins presets', extensions: ['json'] }] });
   if (p) toast('Exported');
 }
 
-async function importTemplates() {
+async function importPresets() {
   const text = await window.api.file.openJson();
   if (!text) return;
   let data;
-  try { data = JSON.parse(text); } catch { toast('That file isn’t a Margins templates file'); return; }
-  if (data?.format !== 'margins-templates') { toast('That file isn’t a Margins templates file'); return; }
+  try { data = JSON.parse(text); } catch { data = null; }
+  if (!data || !/^margins-(presets|templates)$/.test(data.format)) { toast('That file isn’t a Margins presets file'); return; }
   const s = getSettings();
   const stamp = Date.now().toString(36);
   // fresh ids, so importing twice (or from a friend) never collides
@@ -666,17 +656,23 @@ async function importTemplates() {
     themeIds.set(t.id, id);
     return { id, name: String(t.name || 'Imported theme'), bg: t.bg, fg: t.fg, link: t.link || t.fg, accent: t.accent || t.link || t.fg };
   });
-  const templates = (data.templates || []).filter((t) => t?.settings).map((t, i) => ({
-    id: `user-${stamp}-${i}`, name: String(t.name || 'Imported template'), blurb: String(t.blurb || ''), user: true,
-    settings: Object.fromEntries(Object.entries(t.settings).filter(([k]) => TEMPLATE_KEYS.includes(k)).map(([k, v]) => [k, k === 'theme' && themeIds.has(v) ? themeIds.get(v) : v])),
-  }));
-  const layouts = (data.layouts || []).filter((l) => l?.values).map((l, i) => ({ id: `lay-${stamp}-${i}`, name: String(l.name || 'Imported layout'), values: l.values }));
+  const clean = (group, list, prefix) => (list || []).filter((p) => p && (p.values || p.settings)).map((p, i) => {
+    const v = snapshot(group, p.values || p.settings);
+    if (v.theme && themeIds.has(v.theme)) v.theme = themeIds.get(v.theme);
+    return { id: `${prefix}-${stamp}-${i}`, name: String(p.name || 'Imported'), values: v };
+  }).filter((p) => Object.keys(p.values).length);
+  // the older templates file mixed text and color
+  const textStyles = clean('text', [...(data.textStyles || []), ...(data.templates || [])], 'text');
+  const colorPresets = clean('colors', [...(data.colorPresets || []), ...(data.templates || [])], 'colors');
+  const layouts = clean('page', data.layouts, 'page');
   setSettings({
     customThemes: [...(s.customThemes || []), ...themes],
-    userTemplates: [...(s.userTemplates || []), ...templates],
+    userTextStyles: [...(s.userTextStyles || []), ...textStyles],
+    userColorPresets: [...(s.userColorPresets || []), ...colorPresets],
     userLayouts: [...(s.userLayouts || []), ...layouts],
   }, { scope: 'global' });
-  toast(`Imported ${templates.length} template${templates.length === 1 ? '' : 's'} and ${layouts.length} layout${layouts.length === 1 ? '' : 's'}`);
+  const n = textStyles.length + colorPresets.length + layouts.length;
+  toast(`Imported ${n} preset${n === 1 ? '' : 's'}${themes.length ? ` and ${themes.length} theme${themes.length === 1 ? '' : 's'}` : ''}`);
   render();
 }
 
@@ -727,14 +723,21 @@ function aidsTab() {
 }
 
 function appTab() {
+  const s = getSettings();
+  const mine = (s.userTextStyles || []).length + (s.userColorPresets || []).length + (s.userLayouts || []).length + (s.customThemes || []).length;
   return [
+    section('Your presets',
+      el('p.hint.lead', 'Back up or share your text styles, color presets, page layouts and themes as one file.'),
+      el('div.row-btns',
+        el('button.btn.small', { onclick: importPresets }, icon('upload', 14), 'Import…'),
+        el('button.btn.small', { disabled: !mine, onclick: exportPresets }, icon('download', 14), 'Export yours…'))),
     graphicsSection(),
     section('Reset',
-      el('p.hint.lead', 'Your own themes, templates, page layouts and color changes are kept.'),
+      el('p.hint.lead', 'Your own presets, themes and color changes are kept.'),
       el('div.row-btns', el('button.btn.small.danger', {
         onclick: async () => {
-          if (!(await confirmDialog('Reset all reading settings?', 'Your own themes, templates, page layouts and color changes are kept.', 'Reset', true))) return;
-          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'userTemplates', 'customHighlightColors', 'userLayouts', 'themeOverrides', 'highlightOverrides'].includes(k)));
+          if (!(await confirmDialog('Reset all reading settings?', 'Your own presets, themes and color changes are kept.', 'Reset', true))) return;
+          resetSettings(Object.keys(DEFAULTS).filter((k) => !['customThemes', 'customHighlightColors', 'userLayouts', 'userTextStyles', 'userColorPresets', 'themeOverrides', 'highlightOverrides'].includes(k)));
           render();
         },
       }, 'Reset everything to defaults'))),

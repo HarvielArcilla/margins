@@ -395,8 +395,9 @@ function onPage(p) {
 // sign: +1 for a turn that moves visually leftward (forward in left-to-right
 // books), -1 for the reverse. dir: +1 forward in reading order, -1 back.
 let warned = false;
-export async function animate(kind, sign, ms, go, dir = sign) {
+export async function animate(kind, sign, ms, go, dir = sign, at = null) {
   hurry = false;
+  clickedAt = at;
   if (kind === 'none') return go();
   // nothing to turn to at either end of the book
   if ((dir > 0 && R.location?.atEnd) || (dir < 0 && R.location?.atStart)) return go();
@@ -530,8 +531,12 @@ function fadeStill(setup, a) {
 }
 
 // Which corner leads the curl (Settings → Pages): the fold line's tilt.
+// 'auto' curls from the corner nearest where the page was clicked (the
+// bottom one for keys and other turns).
+let clickedAt = null;
 function curlAngle() {
-  const from = getSettings().curlFrom;
+  let from = getSettings().curlFrom;
+  if (from === 'auto') from = clickedAt == null ? 'bottom' : clickedAt < 0.36 ? 'top' : clickedAt > 0.64 ? 'bottom' : 'middle';
   return from === 'top' ? -0.26 : from === 'middle' ? 0 : 0.26;
 }
 
@@ -627,7 +632,7 @@ function run(duration, frame, measure = false) {
 // Returns a controller, or null if the curl can't run. The book moves to the
 // new page as soon as the drag starts (under the snapshot); if the reader
 // lets go without turning, it moves back.
-export async function startDrag({ sign, dir = sign, go, undo }) {
+export async function startDrag({ sign, dir = sign, x: startX, y: startY, go, undo }) {
   if (!webglAvailable()) return null;
   if ((dir > 0 && R.location?.atEnd) || (dir < 0 && R.location?.atStart)) return null;
   hurry = false;
@@ -646,16 +651,28 @@ export async function startDrag({ sign, dir = sign, go, undo }) {
   await go();
   const setup = leafSetup(s, sign, arrivingNow(ctx));
   if (!e.begin(setup)) { await undo(); hideSnap(); release(); return null; }
-  const stageLeft = $('#stage').getBoundingClientRect().left;
-  // the fold keeps the tilt chosen in settings wherever the page is held
-  const angle = curlAngle();
-  let q = 0, q0 = null;
+  // The page follows the pointer: it is held at the point of its free edge
+  // where it was grabbed, and folds along whatever line brings that point
+  // under the pointer — so moving up or down tilts the fold, like paper.
+  const stage = $('#stage').getBoundingClientRect();
+  const w = setup.leaf.w, h = setup.leaf.h;
+  const toLeaf = (px, py) => [(px - stage.left - setup.hinge) * setup.side, py - stage.top - setup.leaf.top];
+  const [x0, y0] = toLeaf(startX ?? stage.left + setup.hinge + setup.side * w, startY ?? stage.top + h / 2);
+  const G = [w, Math.min(h, Math.max(0, y0))];
+  // going back on a single page, the previous page comes in from the left:
+  // the pointer holds its fold, so its corner travels twice as far
+  const pointAt = (lx, ly) => e.constrain(G, setup.reverse ? [-w + 2 * (lx - x0), ly] : [w + (lx - x0), ly]);
+  let P = setup.reverse ? [-w, G[1]] : [G[0], G[1]];
+  let turned = setup.reverse ? 1 : 0; // how far over the page is, 0..1
   const draw = () => {
-    const t = setup.reverse ? 1 - q : q;
-    const a = backAlpha(setup, t);
+    const f = e.foldFor(G, P);
+    turned = f.q;
+    const progress = setup.reverse ? 1 - turned : turned;
+    const a = backAlpha(setup, turned);
     fadeStill(setup, a);
-    e.draw(t, angle, { backAlpha: a, shadow: shadowFor(q) });
+    e.draw(turned, 0, { backAlpha: a, shadow: shadowFor(progress), fold: f });
   };
+  const progressNow = () => (setup.reverse ? 1 - turned : turned);
   if (setup.under) showUnder(setup.under);
   if (setup.still) showSnap(s, clipFor(setup.still, s.W)); else hideSnap();
   draw();
@@ -664,19 +681,17 @@ export async function startDrag({ sign, dir = sign, go, undo }) {
     if (setup.reverse) return;
     setup.under = p;
     showUnder(p);
-    if (setup.landsOnPage && q < 0.2) { setup.back = p.bitmap; e.setBack(p.bitmap); }
+    if (setup.landsOnPage && turned < 0.2) { setup.back = p.bitmap; e.setBack(p.bitmap); }
   });
   let last = { x: 0, time: performance.now() }, vel = 0;
-  let pending = null;
+  let pending = null, p0 = null;
   const flushMove = () => {
     if (!pending) return;
-    const [px] = pending;
+    const [px, py] = pending;
     pending = null;
-    const local = (px - stageLeft - setup.hinge) * setup.side;
-    const t = e.tForEdge(Math.min(local, setup.leaf.w - 1), angle);
-    q = setup.reverse ? 1 - t : t;
-    if (q0 == null) q0 = q;
+    P = pointAt(...toLeaf(px, py));
     draw();
+    if (p0 == null) p0 = progressNow();
   };
   return {
     move(px, py) {
@@ -689,12 +704,21 @@ export async function startDrag({ sign, dir = sign, go, undo }) {
     },
     async release() {
       flushMove();
-      const moved = q - (q0 ?? 0);
-      const finishTurn = q > 0.55 || moved > 0.28 || (vel > 0.35 && moved > 0.03);
-      const from = q, to = finishTurn ? 1 : 0;
-      const duration = Math.max(180, Math.abs(to - from) * 620);
+      const q = progressNow();
+      const moved = q - (p0 ?? 0);
+      // In a spread the page has to be brought over the spine; a single
+      // page is turned once its corner is past the middle of the page.
+      const enough = setup.landsOnPage ? 0.5 : 0.3;
+      const finishTurn = q > enough || moved > enough * 0.55 || (vel > 0.35 && moved > 0.03);
+      // the held point glides to where the page comes to rest
+      const over = [-w, G[1]], flat = [G[0], G[1]];
+      const target = finishTurn === !setup.reverse ? over : flat;
+      const from = P.slice();
+      const left = Math.hypot(target[0] - from[0], target[1] - from[1]) / (2 * w);
+      const duration = Math.max(180, left * 700);
       await run(duration, (x) => {
-        q = from + (to - from) * releaseEase(x);
+        const k = releaseEase(x);
+        P = [from[0] + (target[0] - from[0]) * k, from[1] + (target[1] - from[1]) * k];
         draw();
       });
       ctx.done = true;

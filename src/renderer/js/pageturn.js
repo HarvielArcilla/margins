@@ -3,7 +3,7 @@
 // auto-scroll — plus the page-turn animations.
 import { $ } from './ui.js';
 import { getSettings, setSettings } from './settings.js';
-import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents } from './reader.js';
+import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents, onContents } from './reader.js';
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
@@ -16,7 +16,7 @@ let queued = 0;
 let dragging = false;
 
 // dir: +1 forward in reading order, -1 back.
-export async function turn(dir, { source = 'user' } = {}) {
+export async function turn(dir, { source = 'user', at = null } = {}) {
   if (!R.rendition) return;
   if (source === 'user') { stats.activity(); resetAutoTurn(); if (getSettings().autoPauseOnInteract && autoScroll.on) stopAuto(); }
   if (dragging) return;
@@ -28,7 +28,7 @@ export async function turn(dir, { source = 'user' } = {}) {
     if (s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
       await go();
     } else {
-      await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir);
+      await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir, at);
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
     focus.pageTurned();
@@ -69,8 +69,14 @@ export function handlePointerDown(pt, ev, doc) {
   };
   let ctrl = null, starting = false, latest = pt, released = false;
   // The pointer can be over the top document or any page frame while it
-  // drags, so listen on all of them.
+  // drags, and turning to another chapter replaces the page frames mid-drag.
+  // A transparent shield over everything keeps the pointer in the top
+  // document; frames that appear during the drag are listened to as well.
+  const shield = document.createElement('div');
+  shield.className = 'drag-shield';
   const targets = new Set([window, doc.defaultView || window, ...liveContents().map((c) => c.window).filter(Boolean)]);
+  const listen = (t) => { t.addEventListener('mousemove', onMove, true); t.addEventListener('mouseup', onUp, true); };
+  activeDrag = (w) => { if (w && !targets.has(w)) { targets.add(w); listen(w); } };
   const onMove = (e) => {
     latest = toTop(e);
     if (ctrl) { ctrl.move(latest.x, latest.y); return; }
@@ -78,6 +84,7 @@ export function handlePointerDown(pt, ev, doc) {
     if ((pt.x - latest.x) * side > 6) {
       starting = true;
       dragging = true;
+      document.body.append(shield); // only once it is really a drag, so clicks still reach the page
       busy = true;
       stats.activity();
       startDrag({ sign: side, dir, x: pt.x, y: pt.y, go: () => (dir > 0 ? rNext() : rPrev()), undo: () => (dir > 0 ? rPrev() : rNext()) })
@@ -97,13 +104,17 @@ export function handlePointerDown(pt, ev, doc) {
   };
   const onUp = (e) => {
     for (const t of targets) { t.removeEventListener('mousemove', onMove, true); t.removeEventListener('mouseup', onUp, true); }
+    shield.remove();
+    activeDrag = null;
     released = true;
     if (starting) { swallowClick = true; setTimeout(() => { swallowClick = false; }, 400); }
     if (ctrl) finish();
     void e;
   };
-  for (const t of targets) { t.addEventListener('mousemove', onMove, true); t.addEventListener('mouseup', onUp, true); }
+  for (const t of targets) listen(t);
 }
+let activeDrag = null;
+onContents((c) => activeDrag?.(c.window));
 
 // ---------- keyboard ----------
 export function handleKey(e) {
@@ -148,7 +159,7 @@ export function handleClick({ x, y }) {
   // Zones are visual (left/right); map to reading direction.
   const dirRight = action === 'next' ? 1 : -1;
   const isVertical = s.clickZones === 'top-bottom';
-  turn(isVertical ? dirRight : visual(dirRight));
+  turn(isVertical ? dirRight : visual(dirRight), { at: ry });
 }
 
 export function zoneAction(layout, rx, ry) {

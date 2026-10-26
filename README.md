@@ -28,8 +28,6 @@ A deeply customizable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Paper textures under the page — fine grain, cotton, laid, linen, vellum, recycled, newsprint, parchment, cold press, or your own image — with strength and scale; they turn with the page
 - An optional crease down the middle of two-page spreads, like an open book, with adjustable darkness and width
 - Pages don't have to fill the window: put a desk at the sides and above and below, in any color, with optional rounded page corners (they turn with the page)
-- Save your own style templates and page layouts, update, rename or delete them, and export or import them (with your color themes) as a file to share
-- Page layouts (Full window, Open book, Paperback, Single page, Roomy, Compact) that set one or two pages, margins, line length, desk, corners and crease — alongside style templates, which set type, color and motion
 - Every color can be changed: any theme's colors (built-in ones can be restored), bars and the line beside them, desk and the highlight palette
 - Search box in Reading settings that finds any setting across every tab
 - Top and bottom bars are separate bands; the crease stays on the pages
@@ -47,7 +45,7 @@ A deeply customizable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 ![Highlight toolbar](docs/screenshots/highlight-toolbar.png)
 
 **Page turning**
-- **Page curl** like Apple Books: the page bends around a moving fold, with lighting, the real next page printed on the back of the turning leaf, and soft shadows, drawn with WebGL. Choose whether the bottom corner, the top corner or the whole edge leads. Grab the margin beside the text and drag to turn it by hand; let go early and it falls back
+- **Page curl** like Apple Books: the page bends around a moving fold, with lighting, the real next page printed on the back of the turning leaf, and soft shadows, drawn with WebGL. It curls from the corner nearest where you click (or always the bottom, top or straight edge). Grab the margin beside the text and drag to turn it by hand: the page follows your pointer, so moving up or down tilts the fold; let go early and it falls back
 - In a two-page spread only one leaf turns, around the spine: forward the right page turns over onto the left; back, the left page returns to the right
 - Also: a stiff flip, slide, push, cover, fade, zoom and rise, all working from a snapshot of the spread so both pages always move together, with live previews in settings
 - Every animation works from real pictures of the pages: the pages either side (and one further) are rendered ahead of time in a hidden window, so a turn starts on the next frame, the arriving page is complete from the first frame, and the live book is only revealed once it has fully drawn. Turns animate with the settings or sidebar open too. This works with hardware acceleration off too, and the curl adapts its resolution to keep the frame rate up on slower machines
@@ -60,9 +58,10 @@ A deeply customizable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 
 ![Page curl in a two-page spread](docs/screenshots/page-curl.png)
 
-**Templates**
-- 14 one-click looks: Classic Novel, Modern Essay, Comfort, Night Owl, Lights Out, Dyslexia Friendly, Large Print, Compact, Academic, E-ink, Speed Reader, Typewriter, Manuscript
-- Save your own; settings can apply to every book or just the one you're reading
+**Presets**
+- Each sits with the settings it sets: text styles in Text (Classic Novel, Modern Essay, Dyslexia Friendly, Large Print, Typewriter…), color presets in Colors (Daylight, Manuscript, E-ink, Night Owl, Lights Out…) and page layouts in Page (Full window, Open book, Paperback, Single page, Roomy, Compact)
+- Save your own of each; update, rename or delete them, and export or import them (with your color themes) as one file
+- Settings can apply to every book or just the one you're reading
 
 **Focus aids**
 - Reading ruler: line, band or spotlight, mouse- or keyboard-driven
@@ -94,9 +93,9 @@ A deeply customizable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 
 | | |
 |---|---|
-| ![Color schemes](docs/screenshots/settings-theme.png) | ![Templates](docs/screenshots/settings-templates.png) |
+| ![Color schemes](docs/screenshots/settings-theme.png) | ![Presets](docs/screenshots/settings-templates.png) |
 | ![Page turning controls](docs/screenshots/settings-controls.png) | ![Layout and animations](docs/screenshots/settings-page.png) |
-| ![Night theme](docs/screenshots/night.png) | ![Manuscript template](docs/screenshots/manuscript.png) |
+| ![Night theme](docs/screenshots/night.png) | ![Manuscript style](docs/screenshots/manuscript.png) |
 | ![Notes](docs/screenshots/notes.png) | ![Library](docs/screenshots/library.png) |
 
 ## Install
@@ -139,7 +138,8 @@ Pushing a tag like `v1.0.0` runs the GitHub Actions workflow, which builds both 
 | R · X · V | Ruler · fixation emphasis · read aloud |
 | Z · F · M | Focus mode · full screen · show bars |
 | G · I | Go to percent · book info |
-| Alt+1…9 | Apply a template |
+| Alt+1…9 | Apply a text style |
+| Alt+Shift+1…9 | Apply a color preset |
 | ? | All shortcuts |
 
 ## How it's built

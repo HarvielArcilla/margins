@@ -3,7 +3,7 @@ import { $, setChildren, el, icon, modal, toast, closeMenus, closeTopModal } fro
 import { loadSettings, getSettings, setSettings } from './settings.js';
 import { loadFonts } from './fonts.js';
 import { allThemes, isDark } from './themes.js';
-import { BUILTIN_TEMPLATES, templatePatch } from './templates.js';
+import { allPresets, presetPatch } from './presets.js';
 import * as library from './library.js';
 import * as reader from './reader.js';
 import * as stats from './stats.js';
@@ -135,7 +135,7 @@ function goToDialog() {
 const SHORTCUTS = [
   ['Turning pages', [['→  Space  PgDn  J  L', 'Next page'], ['←  Shift+Space  PgUp  K  H', 'Previous page'], ['P', 'Start/stop auto-turn or auto-scroll'], ['[  ]', 'Slower / faster auto'], ['G', 'Go to a percentage']]],
   ['Panels', [['T', 'Contents'], ['N', 'Highlights & notes'], ['/  Ctrl+F', 'Search the book'], ['B', 'Bookmark this page'], [',  Ctrl+,', 'Reading settings'], ['I', 'Book info'], ['Esc', 'Close panels']]],
-  ['Reading', [['+  −  0', 'Bigger / smaller / reset text'], ['C', 'Switch day / night colors'], ['R', 'Cycle reading ruler'], ['X', 'Fixation emphasis'], ['V', 'Read aloud'], ['Z', 'Focus mode'], ['F', 'Full screen'], ['M', 'Show/hide bars'], ['Alt+1…9', 'Apply a template']]],
+  ['Reading', [['+  −  0', 'Bigger / smaller / reset text'], ['C', 'Switch day / night colors'], ['R', 'Cycle reading ruler'], ['X', 'Fixation emphasis'], ['V', 'Read aloud'], ['Z', 'Focus mode'], ['F', 'Full screen'], ['M', 'Show/hide bars'], ['Alt+1…9', 'Apply a text style'], ['Alt+Shift+1…9', 'Apply a color preset']]],
   ['App', [['Ctrl+O', 'Import books'], ['Ctrl+L', 'Library'], ['Ctrl+Shift+S', 'Reading stats'], ['Ctrl+E', 'Export highlights'], ['?', 'This list']]],
 ];
 
@@ -176,9 +176,10 @@ function handleShortcut(e) {
   if (!R.open) return false;
   if (mod && k.toLowerCase() === 'f') { sidebar.open('search'); return true; }
   if (e.altKey && /^Digit[1-9]$/.test(e.code)) {
-    const all = [...BUILTIN_TEMPLATES, ...getSettings().userTemplates];
-    const tpl = all[+e.code.slice(5) - 1];
-    if (tpl) { setSettings(templatePatch(tpl)); toast(`Template: ${tpl.name}`); }
+    // Alt+1…9 text styles, Alt+Shift+1…9 color presets
+    const group = e.shiftKey ? 'colors' : 'text';
+    const p = allPresets(group, getSettings())[+e.code.slice(5) - 1];
+    if (p) { setSettings(presetPatch(group, p)); toast(p.name); }
     return true;
   }
   if (mod || e.altKey) return false;

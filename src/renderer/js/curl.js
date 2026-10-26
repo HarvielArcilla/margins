@@ -37,6 +37,7 @@ uniform sampler2D uBack;  // the page printed on the back of the leaf, if known
 uniform float uHasBack;
 uniform float uRigid;     // >= 0: rigid flip at this angle (radians); < 0: curl
 uniform float uFlipped;   // 0..1: how much of the leaf has come over the top
+uniform float uRadius;    // rounded corners at the leaf's free edge (px)
 
 vec2 toLeaf(vec2 px) { return vec2((px.x - uHinge) * uSide, px.y - uLeaf.y); }
 vec2 texAt(vec2 px) { return (px - uCap.xy) / uCap.zw; }
@@ -49,7 +50,13 @@ float flippedOutside(vec2 q) {
   if (dq > 0.0) return 1e4;
   vec2 v = q + uN * (3.14159265 * r - 2.0 * dq);
   vec2 o = max(vec2(-v.x, -v.y), v - vec2(uLeaf.x, uLeaf.z));
-  return max(o.x, o.y);
+  float out_ = max(o.x, o.y);
+  // the page's rounded corners cast rounded shadows
+  if (uRadius > 0.0) {
+    vec2 c = vec2(uLeaf.x - uRadius, clamp(v.y, uRadius, uLeaf.z - uRadius));
+    if (v.x > c.x) out_ = max(out_, length(v - c) - uRadius);
+  }
+  return out_;
 }
 `;
 
@@ -150,7 +157,6 @@ uniform float uFrontLive;
 uniform float uShowThrough;
 uniform float uShadow;
 uniform vec3 uTint;       // night light / dimming applied to drawn paper
-uniform float uRadius;    // rounded corners at the leaf's free edge (px)
 varying vec2 vTex;
 varying vec2 vBackTex;
 varying vec2 vP;
@@ -428,18 +434,52 @@ export class Curl {
 
   // t: 0 (flat, not turned) .. 1 (turned over). angle: tilt of the fold line
   // (>0: the bottom corner leads). Returns nothing; draws one frame.
-  draw(t, angle = 0.3, { backAlpha = 1, shadow = 1, rigid = false } = {}) {
+  // ---------- following the pointer ----------
+  // A page held at a point G of its free edge and moved to P folds along
+  // the line that brings G to P: perpendicular to G−P, set back so that,
+  // with the paper wrapped around a cylinder of radius r, G lands on P.
+  // The page is attached along the hinge, so P can't go anywhere that
+  // would stretch it: no hinge point may end up farther from P than it is
+  // from G. Leaf coordinates throughout.
+  constrain(G, P) {
+    const h = this.o.leaf.h;
+    let x = P[0], y = P[1];
+    for (let k = 0; k < 3; k++) {
+      for (const H of [[0, 0], [0, h]]) {
+        const max = Math.hypot(G[0] - H[0], G[1] - H[1]);
+        const dx = x - H[0], dy = y - H[1], d = Math.hypot(dx, dy);
+        if (d > max && d > 0) { x = H[0] + (dx / d) * max; y = H[1] + (dy / d) * max; }
+      }
+    }
+    return [x, y];
+  }
+
+  foldFor(G, P) {
+    const w = this.o.leaf.w;
+    const dx = G[0] - P[0], dy = G[1] - P[1];
+    const dist = Math.hypot(dx, dy);
+    const N = dist > 0.5 ? [dx / dist, dy / dist] : [1, 0];
+    // the curl is tight at both ends of the turn and roundest midway
+    const rMax = Math.max(28, Math.min(w * 0.14, 130));
+    const r = Math.max(0.01, Math.min(rMax, dist * 0.3, (2 * w - dist) * 0.3));
+    const back = (dist + Math.PI * r) / 2;
+    return { x: G[0] - N[0] * back, y: G[1] - N[1] * back, nx: N[0], ny: N[1], r, q: Math.min(1, dist / (2 * w)) };
+  }
+
+  draw(t, angle = 0.3, { backAlpha = 1, shadow = 1, rigid = false, fold = null } = {}) {
     if (!this.ok || !this.o) return;
     const gl = this.gl, o = this.o;
     const w = o.leaf.w, h = o.leaf.h;
     const tt = Math.min(1, Math.max(0, t));
     let { a, r, p } = this.params(tt, angle);
+    let fy = h * 0.5;
     if (rigid) { a = 0; r = 0.01; p = -1e5; }
-    const N = [Math.cos(a), Math.sin(a)];
+    let N = [Math.cos(a), Math.sin(a)];
+    if (fold && !rigid) { p = fold.x; fy = fold.y; r = fold.r; N = [fold.nx, fold.ny]; }
     // Has any of the page come over the top of the curl yet? Until it has,
     // there is nothing lying flipped over to cast a shadow ahead of the fold.
     let dmax = 0;
-    for (const [cx, cy] of [[0, 0], [w, 0], [0, h], [w, h]]) dmax = Math.max(dmax, (cx - p) * N[0] + (cy - h * 0.5) * N[1]);
+    for (const [cx, cy] of [[0, 0], [w, 0], [0, h], [w, h]]) dmax = Math.max(dmax, (cx - p) * N[0] + (cy - fy) * N[1]);
     const half = Math.PI * Math.max(r, 0.01) * 0.5;
     const flipped = rigid ? 1 : Math.min(1, Math.max(0, (dmax - half) / half));
 
@@ -455,9 +495,10 @@ export class Curl {
       g.uniform1f(u.uHinge, o.hinge);
       g.uniform1f(u.uSide, o.side);
       g.uniform3f(u.uLeaf, w, o.leaf.top, h);
-      g.uniform3f(u.uFold, p, h * 0.5, r);
+      g.uniform3f(u.uFold, p, fy, r);
       g.uniform2f(u.uN, N[0], N[1]);
       if (u.uFlipped) g.uniform1f(u.uFlipped, flipped);
+      if (u.uRadius) g.uniform1f(u.uRadius, o.radius || 0);
       g.uniform4f(u.uCap, o.cap.x, o.cap.y, o.cap.w, o.cap.h);
       g.uniform1i(u.uTex, 0);
       if (u.uBack) g.uniform1i(u.uBack, 1);
@@ -509,7 +550,6 @@ export class Curl {
     gl.uniform1f(u.uBackAlpha, backAlpha);
     gl.uniform1f(u.uFrontLive, o.frontLive ? 1 : 0);
     gl.uniform1f(u.uShowThrough, o.showThrough);
-    if (u.uRadius) gl.uniform1f(u.uRadius, o.radius || 0);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.backTex);
     gl.activeTexture(gl.TEXTURE0);
