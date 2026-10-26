@@ -135,14 +135,15 @@ void main() {
   vN = n;
   vCurl = curl;
   vec2 c = uRes * 0.5;
-  // Perspective: a lifted curl only bulges vertically, so it never reaches
-  // out past the page's own edge; the rigid flip keeps full perspective.
-  vec2 k = uRigid >= 0.0 ? vec2(1.0) : vec2(0.0, 1.0);
+  // Perspective only for the rigid flip: a curl drawn flat stays exactly
+  // on the page's own outline (any bulge pushed the roll past the edge).
+  vec2 k = uRigid >= 0.0 ? vec2(1.0) : vec2(0.0);
   s = c + (s - c) * (1.0 + z * uPersp * k);
   gl_Position = vec4(s.x / uRes.x * 2.0 - 1.0, 1.0 - s.y / uRes.y * 2.0, -z * 0.0005, 1.0);
 }`;
 
-const FS_LEAF = COMMON + `
+const FS_LEAF = `#extension GL_OES_standard_derivatives : enable
+` + COMMON + `
 uniform vec3 uPaper;
 uniform float uBackAlpha;
 uniform float uFrontLive;
@@ -156,22 +157,57 @@ varying vec2 vP;
 varying vec3 vN;
 varying float vCurl;
 varying float vD;
-void main() {
+// How much of this pixel the page covers: its outline (free edge, top,
+// bottom and the rounded corners, which move with it) is smoothed over one
+// screen pixel instead of cut stair-stepped. The hinge side is attached to
+// the spine, so it is left alone.
+float edgeCover() {
+  float d = min(uLeaf.x - vP.x, min(vP.y, uLeaf.z - vP.y));
   if (uRadius > 0.0) {
-    // the page's own outer corners are rounded and move with the leaf
     vec2 c = vec2(uLeaf.x - uRadius, clamp(vP.y, uRadius, uLeaf.z - uRadius));
-    if (vP.x > c.x && length(vP - c) > uRadius + 0.5) discard;
+    if (vP.x > c.x) d = min(d, uRadius - length(vP - c));
   }
+#ifdef GL_OES_standard_derivatives
+  float px = max(length(fwidth(vP)) * 0.7071, 0.35);
+#else
+  float px = 1.0;
+#endif
+  return clamp(d / px + 0.5, 0.0, 1.0);
+}
+
+vec4 surface() {
   vec3 paper = uPaper * uTint;
-  vec3 n = normalize(vN);
-  float face = n.z;
+  // The surface is worked out exactly for this pixel from how far it lies
+  // past the fold (vD is exact: it changes linearly across the page), not
+  // blended between mesh points, so light and the front/back switch follow
+  // the paper's real curve instead of the mesh.
+  float r = max(uFold.z, 0.01);
+  float th = 0.0;
+  vec3 n = vec3(0.0, 0.0, 1.0);
+  if (uRigid >= 0.0) n = normalize(vN);
+  else if (vD > 0.0) {
+    th = min(vD / r, 3.14159265);
+    n = vec3(-uN * sin(th), cos(th));
+    n.x *= uSide;
+  }
+  float face = uRigid >= 0.0 ? n.z : cos(th);
   vec3 nf = face >= 0.0 ? n : -n;
   vec3 L = normalize(vec3(-0.35, -0.45, 1.0));
-  float diff = clamp(dot(nf, L), 0.0, 1.0) / L.z;
-  // soft wrap lighting: the fold darkens gradually instead of banding
-  float shade = mix(0.62, 1.0, smoothstep(0.0, 1.0, clamp(diff, 0.0, 1.0))) + 0.03 * clamp(diff - 1.0, 0.0, 1.0);
-  vec3 refl = reflect(-L, nf);
-  float spec = clamp(vCurl, 0.0, 1.0) * (uRigid < 0.0 ? 0.07 : 0.0) * pow(max(refl.z, 0.0), 8.0);
+  // never brighter than paper lying flat
+  float diff = clamp(dot(nf, L) / L.z, 0.0, 1.0);
+  float shade = mix(0.62, 1.0, smoothstep(0.0, 1.0, diff));
+  float spec = 0.0;
+  if (uRigid < 0.0 && vD > 0.0 && vD < 3.14159265 * r) {
+    float roll = th / 3.14159265; // 0 at the fold, 1 where it lies back down
+    // Paper bending away reflects less toward you, and the inside of the
+    // roll sits under the part already turned over: the front darkens
+    // smoothly into the curl (whichever corner leads), the underside
+    // brightens as it comes back down flat.
+    float light = mix(0.9, 1.0, diff);
+    if (face >= 0.0) shade = light * (1.0 - 0.3 * smoothstep(0.0, 0.5, roll));
+    else shade = light * mix(0.78, 1.0, smoothstep(0.5, 1.0, roll));
+    spec = 0.045 * exp(-pow((th - 1.5708) / 0.35, 2.0));
+  }
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
   float o = flippedOutside(vP);
   float flatShadow = (o > 0.0 && o < 80.0) ? 0.2 * uFlipped * exp(-o / 16.0) * uShadow : 0.0;
@@ -179,30 +215,34 @@ void main() {
     if (uFrontLive > 0.5) {
       // the arriving page lying in place: let the real page show through,
       // darkened by the shadow of the part still lifted over it
-      if (isFlat > 0.5) { gl_FragColor = vec4(0.0, 0.0, 0.0, flatShadow); return; }
+      if (isFlat > 0.5) { return vec4(0.0, 0.0, 0.0, flatShadow); }
       if (uRigid >= 0.0) {
         float a = smoothstep(0.0, 0.9, uRigid);
-        gl_FragColor = vec4(paper * shade * a, a);
-        return;
+        return vec4(paper * shade * a, a);
       }
-      gl_FragColor = vec4(paper * shade + spec, 1.0);
-      return;
+      return vec4(paper * shade + spec, 1.0);
     }
     vec3 col = texture2D(uTex, vTex).rgb;
-    gl_FragColor = vec4(col * shade * (1.0 - flatShadow * isFlat) + spec, 1.0);
+    return vec4(col * shade * (1.0 - flatShadow * isFlat) + spec, 1.0);
   } else {
     if (uHasBack > 0.5) {
       // the real page on the back of this leaf
       vec3 b = texture2D(uBack, vBackTex).rgb;
-      gl_FragColor = vec4((b * shade + spec) * uBackAlpha, uBackAlpha);
-      return;
+      return vec4((b * shade + spec) * uBackAlpha, uBackAlpha);
     }
     // unknown back: paper, with the print faintly showing through (mirrored)
     vec3 front = uFrontLive > 0.5 ? paper : texture2D(uTex, vTex).rgb;
     float ink = clamp(length(front - paper) * 1.6, 0.0, 1.0);
     vec3 col = mix(paper, front, ink * uShowThrough) * 0.94;
-    gl_FragColor = vec4((col * shade + spec) * uBackAlpha, uBackAlpha);
+    return vec4((col * shade + spec) * uBackAlpha, uBackAlpha);
   }
+  return vec4(0.0);
+}
+
+void main() {
+  float cover = edgeCover();
+  if (cover <= 0.0) discard;
+  gl_FragColor = surface() * cover;
 }`;
 
 function compile(gl, type, src) {
@@ -267,6 +307,7 @@ export class Curl {
     this.squad = sg.createBuffer();
     sg.bindBuffer(sg.ARRAY_BUFFER, this.squad);
     sg.bufferData(sg.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), sg.STATIC_DRAW);
+    gl.getExtension('OES_standard_derivatives'); // smooth page edges, if available
     this.leaf = program(gl, VS_LEAF, FS_LEAF);
     this.quad = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quad);
@@ -278,7 +319,9 @@ export class Curl {
     for (let j = 0; j < ny; j++) {
       for (let i = 0; i < nx; i++) {
         const a = j * (nx + 1) + i, b = a + 1, c = a + nx + 1, d = c + 1;
-        idx.push(a, b, c, b, d, c);
+        // alternate the diagonal that splits each square, so a tilted fold
+        // doesn't pick up a sawtooth from them all leaning the same way
+        if ((i + j) % 2) idx.push(a, b, d, a, d, c); else idx.push(a, b, c, b, d, c);
       }
     }
     this.mesh = gl.createBuffer();
