@@ -815,3 +815,18 @@ async function sheetTurn(kind, sign, ms, go, s, ctx) {
 }
 
 export { Curl };
+
+// For tests: hold a page curl still at a point of the turn, from the
+// current page's own picture (forward, as a click would turn it).
+export async function debugCurlFrame(t, angle = 0.26) {
+  const s = await currentPicture();
+  const e = curlEngine();
+  const n = knownNeighbour(here(), 'next');
+  const setup = leafSetup(s, 1, n);
+  if (!e.begin(setup)) return 'no engine';
+  if (setup.under) showUnder(setup.under);
+  if (setup.still) showSnap(s, clipFor(setup.still, s.W)); else hideSnap();
+  e.draw(t, angle, { backAlpha: backAlpha(setup, t), shadow: shadowFor(t) });
+  e.show(true);
+  return 'ok';
+}

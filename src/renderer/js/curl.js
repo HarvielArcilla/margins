@@ -215,13 +215,9 @@ vec4 surface() {
     float landing = smoothstep(0.5, 1.0, roll);     // 0 at the crest, 1 lying flat again
     if (face >= 0.0) shade = light * (1.0 - 0.3 * crest);
     else shade = light * mix(0.7, 1.0, landing);
-    // The sheen sits on the crest but is measured on screen: how far this
-    // point appears from the crest, r(1 - sin th), against a width that
-    // grows with the curl. Near the crest th changes very fast across a few
-    // pixels, so measuring in th made it a thin, hard line.
-    float fromCrest = r * (1.0 - sin(th));
-    float width = 6.0 + r * 0.45;
-    spec = 0.05 * exp(-(fromCrest * fromCrest) / (width * width)) * smoothstep(4.0, 24.0, r);
+    // No sheen: anything added on top of the paper read as the page
+    // brightening ahead of the curl (strongly so on dark themes, where a
+    // little added light is a lot). The curl is drawn only with shade.
   }
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
   float o = flippedOutside(vP);
