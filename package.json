@@ -2,7 +2,7 @@
   "name": "margins",
   "productName": "Margins",
   "version": "1.0.0",
-  "description": "A deeply customisable ePub reader for macOS and Windows \u2014 fonts, spacing, colour schemes, highlights, page-turn styles, templates and reading stats.",
+  "description": "A deeply customizable ePub reader for macOS and Windows — fonts, spacing, color schemes, highlights, page-turn styles, presets and reading stats.",
   "main": "src/main/main.js",
   "author": {
     "name": "Harviel Arcilla",
@@ -70,7 +70,7 @@
   "build": {
     "appId": "io.github.harvielarcilla.margins",
     "productName": "Margins",
-    "copyright": "Copyright \u00a9 2026 Harviel Arcilla",
+    "copyright": "Copyright © 2026 Harviel Arcilla",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -86,8 +86,7 @@
         "ext": "epub",
         "name": "ePub book",
         "role": "Viewer",
-        "mimeType": "application/epub+zip",
-        "icon": "build/icon"
+        "mimeType": "application/epub+zip"
       }
     ],
     "mac": {
