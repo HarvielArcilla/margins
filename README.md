@@ -28,6 +28,7 @@ A deeply customizable ePub reader for **macOS** and **Windows**. Pick from 31 bu
 - Paper textures under the page — fine grain, cotton, laid, linen, vellum, recycled, newsprint, parchment, cold press, or your own image — with strength and scale; they turn with the page
 - An optional crease down the middle of two-page spreads, like an open book, with adjustable darkness and width
 - Pages don't have to fill the window: put a desk at the sides and above and below, in any color, with optional rounded page corners (they turn with the page)
+- Save your own style templates and page layouts, update, rename or delete them, and export or import them (with your color themes) as a file to share
 - Page layouts (Full window, Open book, Paperback, Single page, Roomy, Compact) that set one or two pages, margins, line length, desk, corners and crease — alongside style templates, which set type, color and motion
 - Every color can be changed: any theme's colors (built-in ones can be restored), bars and the line beside them, desk and the highlight palette
 - Search box in Reading settings that finds any setting across every tab

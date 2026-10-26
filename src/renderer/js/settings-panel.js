@@ -5,7 +5,7 @@ import { getSettings, setSettings, setBookScope, bookScopeActive, resetSettings,
 import { allThemes, isDark, highlightColors, HIGHLIGHT_COLORS, HIGHLIGHT_STYLES } from './themes.js';
 import { BUILTIN_LAYOUTS, layoutOf, layoutPatch, matchesLayout } from './layouts.js';
 import { listFonts, CATEGORIES, loadSystemFonts, systemFontsLoaded, setUserFonts, fontStack } from './fonts.js';
-import { BUILTIN_TEMPLATES, snapshotTemplate, templatePatch } from './templates.js';
+import { BUILTIN_TEMPLATES, TEMPLATE_KEYS, snapshotTemplate, templatePatch } from './templates.js';
 import { ANIMATIONS, ZONE_LAYOUTS, zoneAction } from './pageturn.js';
 import { Curl } from './curl.js';
 import { turnStatus } from './turn-anim.js';
@@ -231,7 +231,7 @@ function fontPicker() {
 
 // Page layouts, each drawn as a little window: the desk, the page (or open
 // spread) with its corners, margins and crease.
-function layoutCards() {
+function layoutGrid(list) {
   const s = getSettings();
   const card = (p) => {
     const v = { ...layoutPatch(p) };
@@ -242,25 +242,24 @@ function layoutCards() {
       class: `lp-sheet ${two && v.spineShadow ? 'crease' : ''}`,
       style: { '--dx': `${v.deskX}%`, '--dy': `${v.deskY * 1.6}%`, '--r': `${Math.min(8, v.pageRadius / 3)}px`, '--cd': v.creaseDepth / 100 },
     }, page(), two ? page() : null);
-    return el('button.lp-card', {
-      class: `lp-card ${matchesLayout(s, v) ? 'on' : ''}`, title: p.blurb,
-      onclick: () => { setSettings(layoutPatch(p)); render(); },
+    return el('div.lp-card', {
+      class: `lp-card ${matchesLayout(s, v) ? 'on' : ''}`, title: p.blurb, role: 'button', tabIndex: 0,
+      onclick: () => { setSettings(layoutPatch(p)); toast(`Page layout: ${p.name}`); render(); },
     }, el('span.lp-win', sheet), el('span.sp-name', p.name), el('span.sp-blurb', p.blurb),
-    p.user ? el('span.theme-x', { title: 'Delete layout', onclick: async (e) => { e.stopPropagation(); if (await confirmDialog('Delete page layout?', p.name, 'Delete', true)) { setSettings({ userLayouts: s.userLayouts.filter((x) => x.id !== p.id) }, { scope: 'global' }); render(); } } }, icon('x', 12)) : null);
+    p.user ? manageLinks('userLayouts', p, () => ({ values: layoutOf(getSettings()) })) : null);
   };
-  const user = (s.userLayouts || []).map((p) => ({ ...p, user: true, blurb: p.blurb || 'Your layout' }));
-  return [
-    el('div.sp-grid', [...BUILTIN_LAYOUTS, ...user].map(card)),
-    el('div.row-btns',
-      el('button.btn.small', {
-        onclick: async () => {
-          const name = await promptDialog('Save this page layout', 'Name', 'My layout');
-          if (!name) return;
-          setSettings({ userLayouts: [...(s.userLayouts || []), { id: `lay-${Date.now().toString(36)}`, name, values: layoutOf(getSettings()) }] }, { scope: 'global' });
-          render();
-        },
-      }, icon('plus', 14), 'Save current layout')),
-  ];
+  return el('div.sp-grid', list.map(card));
+}
+
+// Update / Rename / Delete for something the reader saved.
+function manageLinks(key, item, snapshot) {
+  const list = () => getSettings()[key] || [];
+  const put = (next) => { setSettings({ [key]: next }, { scope: 'global' }); render(); };
+  const stop = (fn) => (e) => { e.stopPropagation(); fn(); };
+  return el('span.manage',
+    el('button.link-btn', { title: 'Replace with your current settings', onclick: stop(() => { put(list().map((x) => (x.id === item.id ? { ...x, ...snapshot() } : x))); toast(`Updated “${item.name}”`); }) }, 'Update'),
+    el('button.link-btn', { onclick: stop(async () => { const name = await promptDialog('Rename', 'Name', item.name); if (name) put(list().map((x) => (x.id === item.id ? { ...x, name } : x))); }) }, 'Rename'),
+    el('button.link-btn.danger', { onclick: stop(async () => { if (await confirmDialog(`Delete “${item.name}”?`, 'This can’t be undone.', 'Delete', true)) put(list().filter((x) => x.id !== item.id)); }) }, 'Delete'));
 }
 
 function themeTab() {
@@ -595,29 +594,90 @@ function zoneDiagram(layout, invert) {
 
 function templatesTab() {
   const s = getSettings();
-  const apply = (t) => { setSettings(templatePatch(t)); toast(`Applied “${t.name}”`); render(); };
+  const userT = s.userTemplates || [], userL = (s.userLayouts || []).map((p) => ({ ...p, user: true, blurb: p.blurb || 'Your layout' }));
+  const active = (t) => Object.entries(templatePatch(t)).every(([k, v]) => JSON.stringify(s[k]) === JSON.stringify(v));
+  const apply = (t) => { setSettings(templatePatch(t)); toast(`Style: ${t.name}`); render(); };
   const card = (t) => {
     const th = allThemes(s).find((x) => x.id === t.settings.theme) || allThemes(s)[0];
-    return el('div.tpl-card', { onclick: () => apply(t) },
+    return el('div.tpl-card', { class: `tpl-card ${active(t) ? 'on' : ''}`, role: 'button', tabIndex: 0, onclick: () => apply(t) },
       el('div.tpl-preview', { style: { background: th.bg, color: th.fg, fontFamily: fontStack(t.settings.font) || 'serif', lineHeight: t.settings.lineHeight || 1.5, textAlign: t.settings.textAlign === 'justify' ? 'justify' : 'left' } },
         el('b', t.name), el('span', ' — The lamp threw a soft circle of light across the open page.')),
       el('div.tpl-meta', el('span', t.blurb),
-        t.user ? el('button.link-btn.danger', { onclick: async (e) => { e.stopPropagation(); if (await confirmDialog('Delete template?', t.name, 'Delete', true)) { setSettings({ userTemplates: s.userTemplates.filter((x) => x.id !== t.id) }, { scope: 'global' }); render(); } } }, 'Delete') : null));
+        t.user ? manageLinks('userTemplates', t, () => {
+          const n = snapshotTemplate(getSettings(), t.name);
+          return { settings: n.settings, blurb: n.blurb };
+        }) : null));
+  };
+  const saveStyle = async () => {
+    const name = await promptDialog('Save style template', 'Name', 'My style');
+    if (!name) return;
+    setSettings({ userTemplates: [...(getSettings().userTemplates || []), snapshotTemplate(getSettings(), name)] }, { scope: 'global' });
+    toast(`Saved “${name}”`);
+    render();
+  };
+  const saveLayout = async () => {
+    const name = await promptDialog('Save page layout', 'Name', 'My layout');
+    if (!name) return;
+    setSettings({ userLayouts: [...(getSettings().userLayouts || []), { id: `lay-${Date.now().toString(36)}`, name, values: layoutOf(getSettings()) }] }, { scope: 'global' });
+    toast(`Saved “${name}”`);
+    render();
   };
   return [
-    section('Your style templates',
-      el('button.btn.small', {
-        onclick: async () => {
-          const name = await promptDialog('Save current look as a template', 'Name', 'My reading setup');
-          if (!name) return;
-          setSettings({ userTemplates: [...s.userTemplates, snapshotTemplate(getSettings(), name)] }, { scope: 'global' });
-          render();
-        },
-      }, icon('plus', 14), 'Save current style as a template'),
-      s.userTemplates.length ? el('div.tpl-grid', s.userTemplates.map(card)) : el('p.hint', 'Style templates capture fonts, text spacing, colors, atmosphere and page turning — not the page layout.')),
+    section('Save your setup',
+      el('p.hint.lead', 'A style template keeps fonts, text spacing, colors, atmosphere and page turning. A page layout keeps one or two pages, margins, line length, desk, corners and crease. Save either, and switch between them in one click.'),
+      el('div.row-btns',
+        el('button.btn.small.primary', { onclick: saveStyle }, icon('plus', 14), 'Save style template'),
+        el('button.btn.small.primary', { onclick: saveLayout }, icon('plus', 14), 'Save page layout')),
+      el('div.row-btns',
+        el('button.btn.small', { onclick: importTemplates }, icon('upload', 14), 'Import…'),
+        el('button.btn.small', { disabled: !userT.length && !userL.length && !(s.customThemes || []).length, onclick: exportTemplates }, icon('download', 14), 'Export yours…'))),
+    section('Your style templates', userT.length ? el('div.tpl-grid', userT.map((t) => card({ ...t, user: true }))) : el('p.hint', 'Nothing saved yet. Set things up the way you like, then use Save style template.')),
+    section('Your page layouts', userL.length ? layoutGrid(userL) : el('p.hint', 'Nothing saved yet. Arrange the page the way you like, then use Save page layout.')),
     section('Built-in style templates', el('div.tpl-grid', BUILTIN_TEMPLATES.map(card))),
-    section('Page layouts', el('p.hint.lead', 'One or two pages, margins, line length, desk, corners and crease.'), layoutCards()),
+    section('Built-in page layouts', layoutGrid(BUILTIN_LAYOUTS)),
   ];
+}
+
+// Templates, layouts and the custom themes they use travel as one JSON file.
+async function exportTemplates() {
+  const s = getSettings();
+  const data = {
+    format: 'margins-templates', version: 1,
+    templates: s.userTemplates || [],
+    layouts: s.userLayouts || [],
+    themes: s.customThemes || [], // your own color themes, which templates may use
+  };
+  const p = await window.api.file.save({ defaultPath: 'margins-templates.json', content: JSON.stringify(data, null, 2), filters: [{ name: 'Margins templates', extensions: ['json'] }] });
+  if (p) toast('Exported');
+}
+
+async function importTemplates() {
+  const text = await window.api.file.openJson();
+  if (!text) return;
+  let data;
+  try { data = JSON.parse(text); } catch { toast('That file isn’t a Margins templates file'); return; }
+  if (data?.format !== 'margins-templates') { toast('That file isn’t a Margins templates file'); return; }
+  const s = getSettings();
+  const stamp = Date.now().toString(36);
+  // fresh ids, so importing twice (or from a friend) never collides
+  const themeIds = new Map();
+  const themes = (data.themes || []).filter((t) => t?.bg && t?.fg).map((t, i) => {
+    const id = `custom-${stamp}-${i}`;
+    themeIds.set(t.id, id);
+    return { id, name: String(t.name || 'Imported theme'), bg: t.bg, fg: t.fg, link: t.link || t.fg, accent: t.accent || t.link || t.fg };
+  });
+  const templates = (data.templates || []).filter((t) => t?.settings).map((t, i) => ({
+    id: `user-${stamp}-${i}`, name: String(t.name || 'Imported template'), blurb: String(t.blurb || ''), user: true,
+    settings: Object.fromEntries(Object.entries(t.settings).filter(([k]) => TEMPLATE_KEYS.includes(k)).map(([k, v]) => [k, k === 'theme' && themeIds.has(v) ? themeIds.get(v) : v])),
+  }));
+  const layouts = (data.layouts || []).filter((l) => l?.values).map((l, i) => ({ id: `lay-${stamp}-${i}`, name: String(l.name || 'Imported layout'), values: l.values }));
+  setSettings({
+    customThemes: [...(s.customThemes || []), ...themes],
+    userTemplates: [...(s.userTemplates || []), ...templates],
+    userLayouts: [...(s.userLayouts || []), ...layouts],
+  }, { scope: 'global' });
+  toast(`Imported ${templates.length} template${templates.length === 1 ? '' : 's'} and ${layouts.length} layout${layouts.length === 1 ? '' : 's'}`);
+  render();
 }
 
 let editingPalette = false;
