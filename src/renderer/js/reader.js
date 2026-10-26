@@ -256,8 +256,11 @@ export async function relayout({ recreate = false } = {}) {
       // reliable than epub.js's in-place resize, which can re-display an
       // earlier position after the fact.
       await createRendition(cfi);
-    } else if (cfi) {
-      await R.rendition.display(cfi);
+    } else {
+      // Same page size, but the page area may have moved or changed around
+      // it (the desk): keep the book centered in it.
+      placeBook(L);
+      if (cfi) await R.rendition.display(cfi);
     }
     await settleOn(cfi);
   } finally {
@@ -396,6 +399,13 @@ function onSettingsChanged(s, changed) {
   if (!R.open) return;
   if (!changed || [...changed].some((k) => !UNSEEN_KEYS.test(k))) invalidateSnapshot();
   else schedulePrepare();
+  // The desk resizes the page area at once; if the book keeps its size it
+  // only needs re-centering, which can't wait for the (debounced) relayout.
+  if (changed?.some((k) => k === 'deskX' || k === 'deskY')) {
+    applyPageSize(s);
+    const L = layoutFor(s);
+    if (R.layout && L.width === R.layout.width && L.height === R.layout.height && L.cols === R.cols) placeBook(L);
+  }
   applyTheme();
   restyleAll();
   annotations.restyle();
