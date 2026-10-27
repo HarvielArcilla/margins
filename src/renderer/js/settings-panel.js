@@ -360,7 +360,7 @@ function themeTab() {
       range('brightness', 'Brightness', 30, 100, 1, pct, 'Dims the page beyond your screen’s minimum.'),
       range('warmth', 'Warmth (night light)', 0, 100, 1, pct),
       range('vignette', 'Vignette', 0, 100, 1, pct),
-      toggleCtl('keepPublisherColors', 'Keep the book’s own text colors'),
+      toggleCtl('keepPublisherColors', 'Keep the book’s own text colors', 'On light colors. Dark ones always use their own text color so it stays readable.'),
       select('autoDarkTheme', 'When the system is in dark mode use', [['', 'The same colors (off)'], ...dark.map((t) => [t.id, t.name])])),
     section('Images',
       range('dimImages', 'Dim images', 0, 60, 1, pct),

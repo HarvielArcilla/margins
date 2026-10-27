@@ -16,7 +16,13 @@ export function buildContentCss(s, theme) {
   // the book marks a break (soft hyphens), or never.
   const hy = { auto: 'auto', book: 'manual', never: 'none' }[s.wordBreaks] || 'auto';
 
-  out.push(fontFaceCssFor([s.font, headingName]));
+  // With the book's own fonts, a book that names none would fall back to
+  // the browser's default (usually Times). Give it a good book face
+  // instead, set on the root without !important, so any font the book
+  // does name still wins.
+  const fallback = s.font === 'publisher' ? 'Literata' : null;
+  out.push(fontFaceCssFor([s.font, headingName, fallback].filter(Boolean)));
+  if (fallback) out.push(`html { font-family: ${fontStack(fallback)}; }\n  html[data-m-generic=serif] body { font-family: ${fontStack(fallback)} !important; }`);
 
   out.push(`/* always light: matches the frame, so no opaque backdrop flashes in */
   :root { color-scheme: light; }
@@ -43,7 +49,9 @@ export function buildContentCss(s, theme) {
   ${hy === 'none' ? `body * { hyphens: none ${imp}; -webkit-hyphens: none ${imp}; word-break: normal ${imp}; }` : ''}
   b, strong { font-weight: ${s.boldWeight} ${imp}; }`);
 
-  if (!s.keepPublisherColors) {
+  // The book's own text colors are kept on light pages; on dark ones they
+  // would mostly be dark ink on a dark page, so the scheme's colors win.
+  if (!s.keepPublisherColors || dark) {
     out.push(`body { color: ${theme.fg} ${imp}; }
     body *:not(a):not(a *) { color: inherit ${imp}; }
     body * { background-color: transparent ${imp}; border-color: ${rgba(theme.fg, 0.25)} ${imp}; }

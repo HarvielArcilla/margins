@@ -5,7 +5,7 @@ import { migrateTemplates, migrateThemes } from './presets.js';
 
 export const DEFAULTS = {
   // Typography
-  font: 'Literata',
+  font: 'publisher', // the book's own fonts until you choose one
   fontSize: 19,
   fontWeight: 400,
   boldWeight: 700,
@@ -14,12 +14,12 @@ export const DEFAULTS = {
   wordSpacing: 0, // em
   paragraphSpacing: 0.4, // em between paragraphs
   paragraphIndent: 1.4, // em first-line indent
-  textAlign: 'justify', // publisher | left | justify | center
-  wordBreaks: 'auto', // auto | book | never: splitting words across lines
+  textAlign: 'publisher', // publisher | left | justify | center
+  wordBreaks: 'book', // auto | book | never: splitting words across lines
   headingFont: 'same', // same | publisher | <font name>
   headingScale: 1,
-  publisherStyles: 'mix', // respect | mix | override
-  keepPublisherColors: false,
+  publisherStyles: 'respect', // respect | mix | override
+  keepPublisherColors: true, // on light colors; dark ones always set the text color
   fontSmoothing: 'auto', // auto | antialiased | subpixel
   textShadow: 0, // px, faux weight for thin fonts on dark themes
   dropCaps: false,

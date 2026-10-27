@@ -73,14 +73,21 @@ void main() {
   if (px.x >= uStatic.x && px.x < uStatic.y && px.y >= 0.0 && px.y < uSize.y) c = vec4(texture2D(uTex, texAt(px)).rgb, 1.0);
   vec2 l = toLeaf(px);
   float sh = 0.0;
-  if (uRigid < 0.0 && l.x >= -2.0 && l.y >= -2.0 && l.y <= uLeaf.z + 2.0) {
+  // (the turned-over part reaches past the spine onto the facing page, so
+  // its shadow has to fall there too, not only on the page it left)
+  if (uRigid < 0.0 && l.y >= -2.0 && l.y <= uLeaf.z + 2.0) {
     float d = dot(l - uFold.xy, uN);
     float r = uFold.z;
     // ambient occlusion under the lifted part, strongest at the fold
-    if (d > 0.0 && l.x <= uLeaf.x) sh = 0.40 * exp(-d / (r * 1.6 + 6.0));
+    // and a crisper shadow just under the roll's outer edge, where the
+    // lifted paper is closest to the page it's revealing
+    if (d > 0.0 && l.x >= -2.0 && l.x <= uLeaf.x) sh = 0.40 * exp(-d / (r * 1.6 + 6.0)) + 0.10 * exp(-max(d - r, 0.0) / 6.0);
     // soft drop shadow around the part lying flipped over
     float o = flippedOutside(l);
-    if (o > 0.0 && o < 60.0) sh = max(sh, 0.20 * uFlipped * exp(-o / 14.0) * clamp(r / 20.0 + 0.4, 0.0, 1.0));
+    // a tight contact shadow right at its edge plus a softer one around it
+    // (it carries on a little under the edge: the edge's own antialiased
+    // pixels let some of what's beneath show, and that must be shadow too)
+    if (o > -3.0 && o < 90.0) sh = max(sh, (0.10 * exp(-max(o, 0.0) / 8.0) + 0.16 * exp(-max(o, 0.0) / 26.0)) * uFlipped * clamp(r / 20.0 + 0.4, 0.0, 1.0));
   }
   if (uRigid >= 0.0 && l.y >= 0.0 && l.y <= uLeaf.z) {
     float s = sin(uRigid);
@@ -108,7 +115,12 @@ varying vec3 vN;          // surface normal
 varying float vCurl;      // 1 on the curved part
 varying float vD;         // distance past the fold line (<= 0: lying flat)
 void main() {
-  vec2 p = aUV * vec2(uLeaf.x, uLeaf.z);
+  // The mesh reaches a pixel and a half past the free edges so the pixels
+  // the edge only partly covers get drawn and faded (edgeDist goes below
+  // zero there). Ending exactly on the edge left the outer half of every
+  // edge pixel undrawn, a stair-step that showed as dashes against the
+  // shadow underneath. The hinge side stays exact.
+  vec2 p = vec2(aUV.x * (uLeaf.x + 1.5), aUV.y * (uLeaf.z + 3.0) - 1.5);
   vec2 screen0 = vec2(uHinge + uSide * p.x, uLeaf.y + p.y);
   vTex = texAt(screen0);
   // the back of a leaf, once turned over, lies mirrored across the hinge
@@ -173,7 +185,8 @@ varying float vD;
 // bottom and the rounded corners, which move with it) is smoothed over one
 // screen pixel instead of cut stair-stepped. The hinge side is attached to
 // the spine, so it is left alone.
-float edgeCover() {
+// How far inside the leaf's outline this pixel lies, in screen pixels.
+float edgeDist() {
   float d = min(uLeaf.x - vP.x, min(vP.y, uLeaf.z - vP.y));
   if (uRadius > 0.0) {
     vec2 c = vec2(uLeaf.x - uRadius, clamp(vP.y, uRadius, uLeaf.z - uRadius));
@@ -188,7 +201,7 @@ float edgeCover() {
 #else
   float px = 1.0;
 #endif
-  return clamp(d / px + 0.5, 0.0, 1.0);
+  return d / px;
 }
 
 vec4 surface() {
@@ -234,7 +247,7 @@ vec4 surface() {
   // the fold, fading as it rises away from the page.
   bool rolling = uRigid < 0.0 && vD > 0.0;
   float o = flippedOutside(rolling ? vP - uN * (vD + 0.5) : vP);
-  float flatShadow = (o > 0.0 && o < 80.0) ? 0.2 * uFlipped * exp(-o / 16.0) * uShadow : 0.0;
+  float flatShadow = (o > -3.0 && o < 90.0) ? (0.10 * exp(-max(o, 0.0) / 8.0) + 0.16 * exp(-max(o, 0.0) / 26.0)) * uFlipped * uShadow : 0.0;
   if (rolling) flatShadow *= 1.0 - smoothstep(0.0, 0.6, min(th, 3.14159265 - th) / 1.5708);
   if (face >= 0.0) {
     if (uFrontLive > 0.5) {
@@ -268,9 +281,21 @@ vec4 surface() {
 }
 
 void main() {
-  float cover = edgeCover();
+  float e = edgeDist();
+  float cover = clamp(e + 0.5, 0.0, 1.0);
   if (cover <= 0.0) discard;
-  gl_FragColor = surface() * cover;
+  vec4 c = surface();
+  // A fine darker rim along the edges of the part that's lifted off the
+  // page, so it reads apart from the page it moves over (paper edges catch
+  // a little shadow). It grows in past the fold, so the fold itself and the
+  // page lying flat get no line.
+  float lifted = uRigid >= 0.0 ? clamp(sin(uRigid) * 6.0, 0.0, 1.0) : smoothstep(0.0, 8.0, vD);
+  float rim = 1.0 - smoothstep(0.4, 1.9, e);
+  // On a dark page a darker line can't be seen, so the edge catches light instead.
+  float k = rim * lifted * uShadow;
+  if (dot(uPaper * uTint, vec3(0.3, 0.59, 0.11)) < 0.35) c.rgb += 0.09 * k * c.a;
+  else c.rgb *= 1.0 - 0.16 * k;
+  gl_FragColor = c * cover;
 }`;
 
 function compile(gl, type, src) {

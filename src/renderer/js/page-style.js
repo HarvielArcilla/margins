@@ -11,6 +11,18 @@ export function applyPageCss(contents, s, theme) {
   if (!tag) { tag = doc.createElement('style'); tag.id = 'm-reader-style'; doc.head.append(tag); }
   const css = buildContentCss(s, theme);
   if (tag.textContent !== css) tag.textContent = css;
+  markGenericFont(doc, s);
+}
+
+// A book that only asks for "serif" (or names Times, the usual stand-in)
+// hasn't chosen a face, it's asked for a kind of face. With the book's own
+// fonts on, give it a good one of that kind rather than Times.
+function markGenericFont(doc, s) {
+  const root = doc.documentElement;
+  root.removeAttribute('data-m-generic');
+  if (s.font !== 'publisher' || !doc.body) return;
+  const fam = doc.defaultView.getComputedStyle(doc.body).fontFamily.toLowerCase().replace(/["']/g, '').split(',').map((f) => f.trim());
+  if (fam.every((f) => ['serif', 'times', 'times new roman', 'tinos', 'liberation serif'].includes(f))) root.setAttribute('data-m-generic', 'serif');
 }
 
 // ---------- highlights ----------

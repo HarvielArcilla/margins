@@ -13,7 +13,9 @@ export const GROUPS = {
     userKey: 'userTextStyles', noun: 'text style', title: 'Text styles',
     filters: [['all', 'All'], ['mine', 'Yours']],
     builtins: [
-      { id: 'default', name: 'Margins Default', blurb: 'Balanced book typography', values: {} },
+      { id: 'default', name: 'As Published', blurb: 'The book’s own fonts and layout', values: {} },
+      { id: 'margins', name: 'Margins', blurb: 'Literata, justified, even spacing',
+        values: { font: 'Literata', textAlign: 'justify', wordBreaks: 'auto', publisherStyles: 'mix' } },
       { id: 'classic', name: 'Classic Novel', blurb: 'Garamond, justified, indented, drop caps',
         values: { font: 'EB Garamond', fontSize: 21, lineHeight: 1.5, textAlign: 'justify', paragraphIndent: 1.5, paragraphSpacing: 0, wordBreaks: 'auto', dropCaps: true, smallCapsHeadings: true, publisherStyles: 'mix' } },
       { id: 'essay', name: 'Modern Essay', blurb: 'Airy, ragged-right, block paragraphs',

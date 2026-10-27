@@ -441,7 +441,7 @@ body.sidebar-open #sidebar, body.settings-open #settings { transform: none; visi
 .set-crumb { color: var(--accent); }
 .set-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 40px 10px; }
 .scope .seg { flex: 1; }
-.set-tabs { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 0 8px 10px; border-bottom: 1px solid var(--border); }
+.set-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; padding: 0 8px 10px; border-bottom: 1px solid var(--border); }
 .set-tab { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 7px 0; border: 0; background: none; border-radius: 8px; color: var(--muted); font-size: 10.5px; font-weight: 500; transition: background-color .15s, color .15s; }
 .set-tab:hover { background: var(--hover); color: var(--fg); }
 .set-tab.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
