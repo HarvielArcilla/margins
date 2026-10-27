@@ -345,7 +345,13 @@ body[data-flow="scrolled"] #book .epub-container, body[data-flow="continuous"] #
 /* While reading, the bar and the title stay; only the buttons step back
    until the pointer comes near (or the middle of the page is clicked). */
 #reader-topbar .tb-group { transition: opacity .2s ease; }
-#reader-view.immersive:not(.show-chrome):not(.peek-top) #reader-topbar .tb-group { opacity: 0; pointer-events: none; }
+/* Hidden groups stay clickable. On macOS (outside full screen) the bar is
+   a window-drag area that swallows mouse moves, so the pointer can reach
+   the buttons without the page ever seeing it come near the top; with
+   pointer-events off they also stopped counting as no-drag, so the bar
+   took the click as the start of a window drag. Hovering or clicking
+   shows them. */
+#reader-view.immersive:not(.show-chrome):not(.peek-top) #reader-topbar .tb-group:not(:hover):not(:focus-within) { opacity: 0; }
 #reader-view.immersive:not(.show-chrome):not(.peek-bottom) .scrub { opacity: .6; }
 #reader-view.show-chrome #reader-topbar, #reader-view.peek-top #reader-topbar { box-shadow: inset 0 -1px 0 var(--bar-line, var(--border)); }
 body.sidebar-open #reader-topbar, body.settings-open #reader-topbar,

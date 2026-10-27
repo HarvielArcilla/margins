@@ -386,6 +386,9 @@ function revealChromeNear(y) {
 // pointer moves arrive far faster than frames; handle at most one per frame
 const onPointer = perFrame((y) => { if (!R.open) return; revealChromeNear(y); focus.pointer(y); stats.activity(); });
 document.addEventListener('mousemove', (e) => onPointer(e.clientY));
+// The top bar is a window-drag area on macOS, which keeps mouse moves over
+// it from the page; its buttons still see the pointer, so they reveal the bar.
+document.getElementById('reader-topbar')?.addEventListener('mouseover', () => revealChromeNear(0));
 
 const RECREATE_KEYS = new Set(['flow']);
 const RELAYOUT_KEYS = new Set(['deskX', 'deskY', 'spread', 'columnGap', 'marginH', 'marginV', 'lineLength', 'fontSize', 'lineHeight', 'font', 'letterSpacing',

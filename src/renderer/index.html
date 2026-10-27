@@ -29,15 +29,19 @@
   <!-- Reader -->
   <section id="reader-view" class="immersive">
     <header id="reader-topbar" class="topbar">
+      <!-- First, so the buttons on both sides come after it: it spans the
+           whole bar (to center the title on the window) and is a window-drag
+           area, and a drag area later in the page wins over the buttons'
+           no-drag ones, which left the left-hand buttons unclickable. -->
+      <div class="tb-center">
+        <button id="reader-title" class="title-btn" title="Book info (I)"></button>
+        <div id="reader-chapter" class="muted"></div>
+      </div>
       <div class="tb-group">
         <button class="icon-btn" id="back-btn" title="Library (Ctrl+L)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></span></button>
         <span class="tb-sep"></span>
         <button class="icon-btn" id="toc-btn" title="Contents (T)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></span></button>
         <button class="icon-btn" id="notes-btn" title="Highlights & notes (N)"><span class="icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg></span></button>
-      </div>
-      <div class="tb-center">
-        <button id="reader-title" class="title-btn" title="Book info (I)"></button>
-        <div id="reader-chapter" class="muted"></div>
       </div>
       <div class="tb-group right">
         <span id="session-time" class="session-time" title="Active reading time this session"></span>
