@@ -5,6 +5,7 @@ import { applyChromeTheme, isDark } from './themes.js';
 import { loadFonts } from './fonts.js';
 import { applyPageCss, drawHighlights, applyFixation } from './page-style.js';
 import * as paper from './paper.js';
+import { findCover, showCover } from './cover.js';
 
 window.__pager = true;
 const $ = (s) => document.querySelector(s);
@@ -32,6 +33,8 @@ function applyLook() {
   }
   paper.apply(s, isDark(theme));
   paper.placeSpine(L, stage.left);
+  // the desk shows around a cover
+  if (s.deskColor) rv.style.setProperty('--desk', s.deskColor); else rv.style.removeProperty('--desk');
   Object.assign($('#stage').style, { left: `${stage.left}px`, top: `${stage.top}px`, width: `${stage.W}px`, height: `${stage.H}px`, bottom: 'auto', right: 'auto' });
   Object.assign($('#book').style, { position: 'absolute', left: `${L.padX}px`, top: `${L.padY}px`, width: `${L.width}px`, height: `${L.height}px` });
   document.body.dataset.flow = s.flow;
@@ -103,6 +106,9 @@ async function render(req) {
       if (l?.start?.cfi !== before || (req.which === 'next' ? l?.atEnd : l?.atStart)) break;
     }
   }
+  // the cover is drawn as a cover here too, as on screen
+  await showCover($('#stage'), spec.s.flow === 'paginated' ? findCover(rendition.getContents()[0]) : null, spec.L.cols);
+  await frame();
   const loc = rendition.currentLocation();
   window.api.pager.done({ id: req.id, ok: true, cfi: loc?.start?.cfi || null, atEnd: !!loc?.atEnd, atStart: !!loc?.atStart });
 }

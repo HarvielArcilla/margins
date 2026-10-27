@@ -820,3 +820,17 @@ body.focus-mode #turn-over { top: 0; bottom: 0; }
 .preset-status.changed { border-style: dashed; }
 .preset-status .link-btn { font-size: 12px; }
 .preset-filter { margin-bottom: 10px; }
+
+/* ---------- the cover, shown as a closed book on the desk ---------- */
+#stage.closed { background: transparent !important; box-shadow: none !important; }
+/* the cover page itself stays underneath (invisible) so clicks still turn */
+#stage.closed #viewer, #stage.closed #paper, #stage.closed #spine, #stage.closed #ruler { opacity: 0 !important; }
+.cover-face { position: absolute; z-index: 2; pointer-events: none; overflow: hidden;
+  border-radius: 2px var(--page-radius, 3px) var(--page-radius, 3px) 2px;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 10px 30px -10px rgba(0,0,0,.45), 0 2px 8px -2px rgba(0,0,0,.2); }
+.cover-face img { display: block; width: 100%; height: 100%; object-fit: fill; }
+/* the hinge along the spine side, where a cover board bends */
+.cover-face::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(90deg, rgba(0,0,0,.28) 0, rgba(0,0,0,.08) 1.2%, rgba(255,255,255,.10) 2.4%, rgba(0,0,0,.06) 3.6%, transparent 7%); }
+/* a closed book lies on the desk even when pages fill the window */
+#reader-view:has(#stage.closed) { background: var(--desk, var(--desk-auto)); }

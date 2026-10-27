@@ -1,6 +1,7 @@
 // The reader: opens a book with epub.js, lays it out, styles its pages, and
 // tracks where you are. Page turning, annotations, stats and speech plug in
 // through the hooks below.
+import { findCover, showCover, coverIndex } from './cover.js';
 import { $, setChildren, el, debounce, toast, countWords, clamp } from './ui.js';
 import { getSettings, onSettings, attachBook, detachBook } from './settings.js';
 import { findTheme, applyChromeTheme, isDark, mix, luminance } from './themes.js';
@@ -52,6 +53,7 @@ export async function openBook(meta, { at } = {}) {
   const bytes = await window.api.library.read(meta.id);
   R.book = window.ePub(bytes);
   await R.book.ready;
+  R.coverIndex = await coverIndex(R.book);
   R.rtl = (R.book.package?.metadata?.direction || R.book.package?.spine?.direction) === 'rtl'
     || R.book.packaging?.metadata?.direction === 'rtl';
   R.cache = await window.api.bookCache.get(meta.id);
@@ -182,6 +184,7 @@ function placeBook(L) {
   rv.setProperty('--page-text-right', `${L.padX + L.inset}px`);
   R.layout = L;
   paper.placeSpine(L, 0);
+  if (R.rendition) updateCover();
 }
 
 async function createRendition(at) {
@@ -288,7 +291,24 @@ window.addEventListener('resize', () => {
 });
 
 // ---------- page content ----------
+// The cover page is drawn as the book's cover (see cover.js).
+function updateCover(contents = R.rendition?.getContents?.()[0]) {
+  const on = getSettings().flow === 'paginated' ? findCover(contents) : null;
+  showCover($('#stage'), on, R.cols).catch((e) => console.error(e));
+}
+
+// Is this turn onto or off the cover? (Those don't curl: a page-sized leaf
+// makes no sense for a closed book; they fade instead.)
+export function turnsCover(dir) {
+  const loc = R.location;
+  if (!loc || R.coverIndex == null || R.coverIndex < 0) return false;
+  if (dir > 0) return loc.start.index === R.coverIndex;
+  return loc.start.index === R.coverIndex + 1 && (loc.start.displayed?.page ?? 1) <= 1;
+}
+
 function onContentReady(contents) {
+  // shown as soon as the cover page arrives, not after it has been drawn as a page
+  if (findCover(contents)) updateCover(contents);
   styleContents(contents);
   attachContentListeners(contents);
   for (const fn of contentsHooks()) {
@@ -425,6 +445,7 @@ function onSettingsChanged(s, changed) {
 function onRelocated(location) {
   const prev = R.location;
   R.location = location;
+  updateCover();
   // Keep the anchor while it is still on screen (relayouts, late events);
   // once the reader moves to a page without it, the new page becomes it.
   if (!R.relayouting && !cfiOnPage(R.anchor, location)) R.anchor = location.start.cfi;
@@ -520,7 +541,7 @@ export function updateFooter() {
     title: R.meta.title || '',
     time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     clock: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-    page: s.flow === 'paginated' && d.total ? `Page ${d.page} of ${d.total} in chapter` : (ch?.label ? '' : ''),
+    page: s.flow === 'paginated' && loc.start.index === R.coverIndex ? 'Cover' : s.flow === 'paginated' && d.total ? `Page ${d.page} of ${d.total} in chapter` : '',
     'chapter-left': tl ? `${fmtMin(tl.chapter)} left in chapter` : '',
     'book-left': tl ? `${fmtMin(tl.book)} left in book` : '',
     percent: pct != null ? `${Math.round(pct * 100)}%` : '',
