@@ -5,7 +5,7 @@ import { applyChromeTheme, isDark } from './themes.js';
 import { loadFonts } from './fonts.js';
 import { applyPageCss, drawHighlights, applyFixation } from './page-style.js';
 import * as paper from './paper.js';
-import { findCover, showCover } from './cover.js';
+import { findCover, showCover, coverIndex } from './cover.js';
 
 window.__pager = true;
 const $ = (s) => document.querySelector(s);
@@ -14,8 +14,10 @@ const frame = () => new Promise((r) => requestAnimationFrame(r));
 let book = null, bookId = null, rendition = null, renditionKey = '';
 let spec = null; // the request being rendered (settings etc. for the hooks)
 
+let coverAt = -1;
 function dress(contents) {
-  applyPageCss(contents, spec.s, spec.theme);
+  const blankFirst = spec.s.flow === 'paginated' && spec.L.cols === 2 && coverAt >= 0 && contents.sectionIndex === coverAt + 1;
+  applyPageCss(contents, spec.s, spec.theme, { blankFirst });
   drawHighlights(contents, spec.items || [], spec.s, spec.theme);
   applyFixation(contents, spec.s);
 }
@@ -48,6 +50,7 @@ async function ensureBook(id) {
   const bytes = await window.api.library.read(id);
   book = window.ePub(bytes);
   await book.ready;
+  coverAt = await coverIndex(book);
   bookId = id;
 }
 

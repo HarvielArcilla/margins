@@ -5,13 +5,23 @@
 import { buildContentCss } from './content-style.js';
 import { highlightColors, isDark, rgba, mix } from './themes.js';
 
-export function applyPageCss(contents, s, theme) {
+export function applyPageCss(contents, s, theme, { blankFirst = false } = {}) {
   const doc = contents.document;
   let tag = doc.getElementById('m-reader-style');
   if (!tag) { tag = doc.createElement('style'); tag.id = 'm-reader-style'; doc.head.append(tag); }
   const css = buildContentCss(s, theme);
   if (tag.textContent !== css) tag.textContent = css;
   markGenericFont(doc, s);
+  // In two-page view the book opens like a real one: the first page after
+  // the cover is a right-hand page, with the inside of the cover (blank)
+  // facing it. An empty first column puts it there.
+  let blank = doc.getElementById('m-blank-first');
+  if (blankFirst && !blank) {
+    blank = doc.createElement('style');
+    blank.id = 'm-blank-first';
+    blank.textContent = 'body::before { content: ""; display: block; height: 1px; break-after: column; }';
+    doc.head.append(blank);
+  } else if (!blankFirst && blank) blank.remove();
 }
 
 // A book that only asks for "serif" (or names Times, the usual stand-in)

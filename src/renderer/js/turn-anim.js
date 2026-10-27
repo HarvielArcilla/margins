@@ -30,6 +30,7 @@ import { $, toast } from './ui.js';
 import { getSettings } from './settings.js';
 import { R, liveContents } from './reader.js';
 import { Curl } from './curl.js';
+import { coverBox, measure } from './cover.js';
 import { animation, isAnimating, idle, nextFrame, nextPaint, softwareRendering } from './perf.js';
 import { all as allAnnotations } from './annotations.js';
 
@@ -429,125 +430,141 @@ export async function animate(kind, sign, ms, go, dir = sign, at = null) {
 }
 
 // ---------- opening and closing the cover ----------
-// The cover swings open about its spine edge, fading as it goes, while the
-// first pages fade in beneath it; closing runs the other way. (The cover
-// isn't page-shaped, so the page curl and flip don't fit it.)
-function coverFly(face) {
-  const r = face.getBoundingClientRect();
-  const fly = document.createElement('div');
-  fly.className = 'cover-fly';
-  Object.assign(fly.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
-  const front = face.cloneNode(true);
-  front.className = 'cover-face cover-fly-front';
-  front.hidden = false;
-  front.removeAttribute('style');
-  // the back of the cover board, in the cover's own color
-  const back = document.createElement('div');
-  back.className = 'cover-fly-back';
-  back.style.background = boardColor(face.querySelector('img'));
-  fly.append(front, back);
-  document.body.append(fly);
-  return fly;
-}
-// The cover's color: its average, from a tiny copy of the picture.
-const boardColors = new Map();
-function boardColor(img) {
-  const src = img?.src;
-  if (!src) return '';
-  if (boardColors.has(src)) return boardColors.get(src);
-  let col = '';
-  try {
-    const c = document.createElement('canvas');
-    c.width = 8; c.height = 12;
-    const g = c.getContext('2d', { willReadFrequently: true });
-    g.drawImage(img, 0, 0, 8, 12);
-    const d = g.getImageData(0, 0, 8, 12).data;
-    let r = 0, gr = 0, b = 0;
-    for (let i = 0; i < d.length; i += 4) { r += d[i]; gr += d[i + 1]; b += d[i + 2]; }
-    const n = d.length / 4;
-    col = `rgb(${Math.round(r / n)}, ${Math.round(gr / n)}, ${Math.round(b / n)})`;
-  } catch { /* unreadable picture: the plain board */ }
-  boardColors.set(src, col);
-  return col;
-}
+// As a real book opens: the cover swings over on its hinge, and the first
+// page is there under it from the start.
+// - Two pages across: the cover swings about the spine and comes down on
+//   the left as the inside of the cover, the blank page facing page 1
+//   (nothing shows on the left until it lands there).
+// - One page: the cover lifts off page 1, which lies under it at the
+//   cover's size, then the page opens out to fill the view.
+// Closing runs the same way back. (The cover isn't page-shaped, so the page
+// curl and flip don't suit it.)
 const coverFace = () => { const f = $('#stage.closed .cover-face'); return f && !f.hidden ? f : null; };
+
+function leafAt(rect, cls, origin) {
+  const d = document.createElement('div');
+  d.className = `cover-leaf ${cls}`;
+  Object.assign(d.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transformOrigin: origin });
+  document.body.append(d);
+  return d;
+}
+function coverLeaf(rect, src) {
+  const d = leafAt(rect, 'cover-face', 'left center');
+  const im = document.createElement('img');
+  im.src = src;
+  im.alt = '';
+  d.append(im);
+  return d;
+}
+// the inside of the cover: blank, like the page it becomes
+const insideLeaf = (rect) => leafAt(rect, 'cover-inside', 'right center');
+
+// one quarter turn of a leaf about its hinge, darkening as it rises off
+// the page and lightening as it comes down (0 = flat, 90 = upright)
+function quarter(el, from, to, dur, easing) {
+  const tf = (a) => `perspective(2400px) rotateY(${a}deg)`;
+  const shade = (a) => `brightness(${1 - 0.28 * Math.abs(Math.sin((a * Math.PI) / 180))})`;
+  return el.animate([{ transform: tf(from), filter: shade(from) }, { transform: tf(to), filter: shade(to) }],
+    { duration: dur, easing, fill: 'forwards' }).finished.catch(() => {});
+}
+
+function insetOf(stage, r, radius) {
+  const s = stage.getBoundingClientRect();
+  return `inset(${r.top - s.top}px ${s.right - (r.left + r.width)}px ${s.bottom - (r.top + r.height)}px ${r.left - s.left}px round ${radius}px)`;
+}
 
 export async function coverTurn(dir, ms, go) {
   hurry = false;
   const stage = $('#stage');
-  const dur = Math.max(450, ms * 1.35);
-  const ease = 'cubic-bezier(.45,.05,.3,1)';
-  // The swing is on the stand-in; its fading is on each face, since
-  // fading the whole stand-in would flatten it and show the front through
-  // the back.
-  const swing = (from, to, o1, o2, fly) => {
-    const opts = { duration: dur, easing: ease, fill: 'forwards' };
-    const turn = fly.animate([
-      { transform: `perspective(2200px) rotateY(${from}deg)` },
-      { transform: `perspective(2200px) rotateY(${to}deg)` },
-    ], opts);
-    // and each face shows only on its own side of edge-on (not left to
-    // backface hiding, which not every way of drawing the window honors)
-    const [front, back] = fly.children;
-    // the cover stays solid while it turns and fades only as it lies down
-    // on the far side (opening) or comes up from it (closing)
-    if (from > to) {
-      front.animate([{ opacity: 1, offset: 0 }, { opacity: 0.97, offset: 0.499 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }], opts);
-      back.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 0.97, offset: 0.501 }, { opacity: 0.85, offset: 0.78 }, { opacity: 0, offset: 1 }], opts);
-    } else {
-      back.animate([{ opacity: 0, offset: 0 }, { opacity: 0.85, offset: 0.22 }, { opacity: 0.97, offset: 0.499 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }], opts);
-      front.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 0.97, offset: 0.501 }, { opacity: 1, offset: 1 }], opts);
-    }
-    return turn.finished.catch(() => {});
-  };
   const rv = $('#reader-view');
-  return animation(async () => {
-    // the desk stays under the pages while they fade, even without a desk
-    rv.classList.add('cover-turning');
-    try { await coverMotion(); } finally { rv.classList.remove('cover-turning'); }
-  }).finally(() => schedulePrepare());
+  const dur = Math.max(520, ms * 1.4);
+  const spread = R.cols === 2;
+  const radius = parseFloat(getComputedStyle(rv).getPropertyValue('--page-radius')) || 0;
+  const leaves = [];
+  const reset = () => {
+    stage.getAnimations().forEach((x) => x.cancel());
+    Object.assign(stage.style, { opacity: '', clipPath: '' });
+    leaves.forEach((l) => l.remove());
+  };
+  const screenRect = (b) => { const s = stage.getBoundingClientRect(); return { left: s.left + b.left, top: s.top + b.top, width: b.width, height: b.height }; };
+  const leftPage = () => { const s = stage.getBoundingClientRect(); return { left: s.left, top: s.top, width: s.width / 2, height: s.height }; };
+  const fullClip = `inset(0px 0px 0px 0px round ${radius}px)`;
+  const rightHalf = () => `inset(0px 0px 0px ${Math.round(stage.getBoundingClientRect().width / 2)}px round ${radius}px)`;
 
-  async function coverMotion() {
-    if (dir > 0) {
-      // opening: a stand-in cover swings away; the pages fade in under it
-      const face = coverFace();
-      if (!face) return go();
-      const fly = coverFly(face);
-      stage.style.opacity = '0';
-      try {
-        // it starts to swing at once; the pages fade in as soon as they're ready
-        const swung = swing(0, -180, 1, 0, fly);
-        await go();
-        await settled();
-        const pages = stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * 0.6, easing: 'ease-out', fill: 'forwards' });
-        await swung;
-        await pages.finished.catch(() => {});
-        pages.cancel();
-      } finally {
-        stage.style.opacity = '';
-        fly.remove();
-      }
+  async function open() {
+    const face = coverFace();
+    if (!face) return go();
+    const fr = face.getBoundingClientRect();
+    const front = coverLeaf(fr, face.querySelector('img').src);
+    leaves.push(front);
+    // the book moves to the first page under the stand-in cover
+    stage.style.opacity = '0';
+    await go();
+    await settled();
+    if (spread) {
+      stage.style.clipPath = rightHalf();
+      stage.style.opacity = '';
+      const back = insideLeaf(leftPage());
+      leaves.push(back);
+      back.style.transform = 'perspective(2400px) rotateY(90deg)';
+      // (the page around a cover narrower than it shows as the cover lifts)
+      stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * 0.3, easing: 'ease-out' });
+      await quarter(front, 0, -90, dur / 2, 'cubic-bezier(.45,0,.9,.6)');
+      front.style.visibility = 'hidden';
+      await quarter(back, 90, 0, dur / 2, 'cubic-bezier(.1,.4,.55,1)');
+      // landed: the blank left page takes over from it
+      stage.style.clipPath = '';
+      await back.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
     } else {
-      // closing: the pages fade away, then the cover swings shut over them
-      await stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur * 0.35, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {});
-      const moved = go();
-      stage.style.opacity = '0';
-      stage.getAnimations().forEach((x) => x.cancel());
-      let fly = null;
-      try {
-        await moved;
-        for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
-        const face = coverFace();
-        if (face) {
-          fly = coverFly(face);
-          await swing(-180, 0, 0, 1, fly);
-        }
-      } finally {
-        stage.style.opacity = '';
-        fly?.remove();
-      }
+      stage.style.clipPath = insetOf(stage, fr, 3);
+      stage.style.opacity = '';
+      await quarter(front, 0, -90, dur * 0.55, 'cubic-bezier(.45,0,.9,.6)');
+      front.style.visibility = 'hidden';
+      await stage.animate([{ clipPath: insetOf(stage, fr, 3) }, { clipPath: fullClip }],
+        { duration: dur * 0.45, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => {});
     }
   }
+
+  async function close() {
+    const src = R.coverSrc;
+    if (!src) {
+      // the cover's picture isn't known yet: just let the pages go
+      await stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur * 0.4, fill: 'forwards' }).finished.catch(() => {});
+      await go();
+      for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
+      return;
+    }
+    const size = await measure(src);
+    const cr = screenRect(coverBox(stage, size, spread ? 2 : 1));
+    const front = coverLeaf(cr, src);
+    leaves.push(front);
+    front.style.transform = 'perspective(2400px) rotateY(-90deg)';
+    if (spread) {
+      // the inside of the cover rises off the left, then comes down as the cover
+      const back = insideLeaf(leftPage());
+      leaves.push(back);
+      stage.style.clipPath = rightHalf();
+      await quarter(back, 0, 90, dur / 2, 'cubic-bezier(.45,0,.9,.6)');
+      back.style.visibility = 'hidden';
+      stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur / 2, easing: 'ease-in', fill: 'forwards' });
+      await quarter(front, -90, 0, dur / 2, 'cubic-bezier(.1,.4,.55,1)');
+    } else {
+      // the page closes in to the size of the book, and the cover comes down on it
+      await stage.animate([{ clipPath: fullClip }, { clipPath: insetOf(stage, cr, 3) }],
+        { duration: dur * 0.45, easing: 'cubic-bezier(.6,0,.8,.4)', fill: 'forwards' }).finished.catch(() => {});
+      await quarter(front, -90, 0, dur * 0.55, 'cubic-bezier(.1,.4,.55,1)');
+    }
+    // the real cover goes in under the stand-in
+    stage.getAnimations().forEach((x) => x.cancel());
+    stage.style.opacity = '0';
+    await go();
+    for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
+  }
+
+  return animation(async () => {
+    rv.classList.add('cover-turning');
+    try { await (dir > 0 ? open() : close()); } finally { reset(); rv.classList.remove('cover-turning'); }
+  }).finally(() => schedulePrepare());
 }
 
 // The arriving picture, once the book has moved: checks it is the right page.

@@ -37,7 +37,7 @@ export function findCover(contents) {
 
 // The cover image's size, once it has loaded.
 const sizes = new Map();
-function measure(src) {
+export function measure(src) {
   if (sizes.has(src)) return sizes.get(src);
   const p = new Promise((resolve) => {
     const im = new Image();
@@ -71,8 +71,17 @@ export async function showCover(stage, cover, cols) {
     img.alt = cover.alt || 'Cover';
     try { await img.decode(); } catch { /* shown when it arrives */ }
   }
-  // as large as the page allows in the cover's own proportions; in two-page
-  // view it can't be wider than one page
+  const b = coverBox(stage, { w, h }, cols);
+  Object.assign(face.style, { left: `${b.left}px`, top: `${b.top}px`, width: `${b.width}px`, height: `${b.height}px` });
+  face.hidden = false;
+  stage.classList.add('closed');
+  stage.classList.toggle('closed-spread', cols === 2);
+}
+
+// Where the cover lies on the stage (stage coordinates): as large as the
+// page allows in the cover's own proportions; in two-page view it can't be
+// wider than one page, and lies against the spine.
+export function coverBox(stage, { w, h }, cols) {
   // (measured the way the pager is sized, so both draw it to the pixel)
   const box = stage.getBoundingClientRect();
   const W = Math.round(box.width), H = Math.round(box.height);
@@ -82,10 +91,7 @@ export async function showCover(stage, cover, cols) {
   if (fw > room) { fw = room; fh = (room * h) / w; }
   fw = Math.round(fw); fh = Math.round(fh);
   const left = cols === 2 ? Math.round(W / 2) : Math.round((W - fw) / 2);
-  Object.assign(face.style, { left: `${left}px`, top: `${Math.round((H - fh) / 2)}px`, width: `${fw}px`, height: `${fh}px` });
-  face.hidden = false;
-  stage.classList.add('closed');
-  stage.classList.toggle('closed-spread', cols === 2);
+  return { left, top: Math.round((H - fh) / 2), width: fw, height: fh };
 }
 
 // Which part of the book is its cover page, if any (index into the spine,

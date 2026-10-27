@@ -54,6 +54,7 @@ export async function openBook(meta, { at } = {}) {
   R.book = window.ePub(bytes);
   await R.book.ready;
   R.coverIndex = await coverIndex(R.book);
+  try { R.coverSrc = await R.book.coverUrl(); } catch { R.coverSrc = null; }
   R.rtl = (R.book.package?.metadata?.direction || R.book.package?.spine?.direction) === 'rtl'
     || R.book.packaging?.metadata?.direction === 'rtl';
   R.cache = await window.api.bookCache.get(meta.id);
@@ -318,8 +319,10 @@ function onContentReady(contents) {
 
 function styleContents(contents) {
   const s = getSettings();
-  applyPageCss(contents, s, R.theme || findTheme(s));
+  applyPageCss(contents, s, R.theme || findTheme(s), { blankFirst: blankFirst(contents.sectionIndex, s) });
 }
+// the part right after the cover opens on a right-hand page in two-page view
+const blankFirst = (index, s = getSettings()) => s.flow === 'paginated' && R.cols === 2 && R.coverIndex >= 0 && index === R.coverIndex + 1;
 
 function attachContentListeners(contents) {
   const doc = contents.document;
