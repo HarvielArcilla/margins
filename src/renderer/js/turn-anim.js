@@ -428,6 +428,101 @@ export async function animate(kind, sign, ms, go, dir = sign, at = null) {
   }).finally(() => schedulePrepare());
 }
 
+// ---------- opening and closing the cover ----------
+// The cover swings open about its spine edge, fading as it goes, while the
+// first pages fade in beneath it; closing runs the other way. (The cover
+// isn't page-shaped, so the page curl and flip don't fit it.)
+function coverFly(face) {
+  const r = face.getBoundingClientRect();
+  const fly = document.createElement('div');
+  fly.className = 'cover-fly';
+  Object.assign(fly.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+  const front = face.cloneNode(true);
+  front.className = 'cover-face cover-fly-front';
+  front.hidden = false;
+  front.removeAttribute('style');
+  const back = document.createElement('div');
+  back.className = 'cover-fly-back';
+  fly.append(front, back);
+  document.body.append(fly);
+  return fly;
+}
+const coverFace = () => { const f = $('#stage.closed .cover-face'); return f && !f.hidden ? f : null; };
+
+export async function coverTurn(dir, ms, go) {
+  hurry = false;
+  const stage = $('#stage');
+  const dur = Math.max(450, ms * 1.35);
+  const ease = 'cubic-bezier(.45,.05,.3,1)';
+  // The swing is on the stand-in; its fading is on each face, since
+  // fading the whole stand-in would flatten it and show the front through
+  // the back.
+  const swing = (from, to, o1, o2, fly) => {
+    const mid = (o1 + o2) / 2 + (o1 > o2 ? 0.25 : -0.25);
+    const opts = { duration: dur, easing: ease, fill: 'forwards' };
+    const turn = fly.animate([
+      { transform: `perspective(2200px) rotateY(${from}deg)` },
+      { transform: `perspective(2200px) rotateY(${to}deg)` },
+    ], opts);
+    // and each face shows only on its own side of edge-on (not left to
+    // backface hiding, which not every way of drawing the window honors)
+    const [front, back] = fly.children;
+    const opening = from > to;
+    const firstHalf = opening ? front : back, secondHalf = opening ? back : front;
+    firstHalf.animate([{ opacity: o1, offset: 0 }, { opacity: mid, offset: 0.499 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }], opts);
+    secondHalf.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: mid, offset: 0.501 }, { opacity: o2, offset: 1 }], opts);
+    return turn.finished.catch(() => {});
+  };
+  const rv = $('#reader-view');
+  return animation(async () => {
+    // the desk stays under the pages while they fade, even without a desk
+    rv.classList.add('cover-turning');
+    try { await coverMotion(); } finally { rv.classList.remove('cover-turning'); }
+  }).finally(() => schedulePrepare());
+
+  async function coverMotion() {
+    if (dir > 0) {
+      // opening: a stand-in cover swings away; the pages fade in under it
+      const face = coverFace();
+      if (!face) return go();
+      const fly = coverFly(face);
+      stage.style.opacity = '0';
+      try {
+        // it starts to swing at once; the pages fade in as soon as they're ready
+        const swung = swing(0, -180, 1, 0, fly);
+        await go();
+        await settled();
+        const pages = stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * 0.6, easing: 'ease-out', fill: 'forwards' });
+        await swung;
+        await pages.finished.catch(() => {});
+        pages.cancel();
+      } finally {
+        stage.style.opacity = '';
+        fly.remove();
+      }
+    } else {
+      // closing: the pages fade away, then the cover swings shut over them
+      await stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur * 0.35, easing: 'ease-in', fill: 'forwards' }).finished.catch(() => {});
+      const moved = go();
+      stage.style.opacity = '0';
+      stage.getAnimations().forEach((x) => x.cancel());
+      let fly = null;
+      try {
+        await moved;
+        for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
+        const face = coverFace();
+        if (face) {
+          fly = coverFly(face);
+          await swing(-180, 0, 0, 1, fly);
+        }
+      } finally {
+        stage.style.opacity = '';
+        fly?.remove();
+      }
+    }
+  }
+}
+
 // The arriving picture, once the book has moved: checks it is the right page.
 function arrivingNow(ctx) {
   if (ctx.n && !onPage(ctx.n)) ctx.n = null;

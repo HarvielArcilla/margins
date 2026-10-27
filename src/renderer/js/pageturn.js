@@ -7,7 +7,7 @@ import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
-import { animate, hurryUp, startDrag, ANIMATIONS } from './turn-anim.js';
+import { animate, coverTurn, hurryUp, startDrag, ANIMATIONS } from './turn-anim.js';
 
 export { ANIMATIONS };
 
@@ -28,8 +28,8 @@ export async function turn(dir, { source = 'user', at = null } = {}) {
     if (s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
       await go();
     } else {
-      const kind = turnsCover(dir) && (s.pageAnimation === 'curl' || s.pageAnimation === 'flip') ? 'fade' : s.pageAnimation;
-      await animate(kind, visual(dir), s.animationMs, go, dir, at);
+      if (turnsCover(dir)) await coverTurn(dir, s.animationMs, go);
+      else await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir, at);
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
     focus.pageTurned();

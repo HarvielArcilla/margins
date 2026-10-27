@@ -834,3 +834,10 @@ body.focus-mode #turn-over { top: 0; bottom: 0; }
   background: linear-gradient(90deg, rgba(0,0,0,.28) 0, rgba(0,0,0,.08) 1.2%, rgba(255,255,255,.10) 2.4%, rgba(0,0,0,.06) 3.6%, transparent 7%); }
 /* a closed book lies on the desk even when pages fill the window */
 #reader-view:has(#stage.closed) { background: var(--desk, var(--desk-auto)); }
+/* the cover swinging open or shut (see coverTurn in turn-anim.js) */
+.cover-fly { position: fixed; z-index: 36; pointer-events: none; transform-origin: left center; transform-style: preserve-3d; will-change: transform, opacity; }
+.cover-fly > * { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; }
+/* the inside of the cover board */
+.cover-fly-back { transform: rotateY(180deg); background: color-mix(in srgb, var(--bg) 94%, var(--fg)); border-radius: var(--page-radius, 3px) 2px 2px var(--page-radius, 3px);
+  box-shadow: inset -10px 0 18px -12px rgba(0,0,0,.35); }
+#reader-view.cover-turning { background: var(--desk, var(--desk-auto)) !important; }
