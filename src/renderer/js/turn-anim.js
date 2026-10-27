@@ -441,11 +441,34 @@ function coverFly(face) {
   front.className = 'cover-face cover-fly-front';
   front.hidden = false;
   front.removeAttribute('style');
+  // the back of the cover board, in the cover's own color
   const back = document.createElement('div');
   back.className = 'cover-fly-back';
+  back.style.background = boardColor(face.querySelector('img'));
   fly.append(front, back);
   document.body.append(fly);
   return fly;
+}
+// The cover's color: its average, from a tiny copy of the picture.
+const boardColors = new Map();
+function boardColor(img) {
+  const src = img?.src;
+  if (!src) return '';
+  if (boardColors.has(src)) return boardColors.get(src);
+  let col = '';
+  try {
+    const c = document.createElement('canvas');
+    c.width = 8; c.height = 12;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, 8, 12);
+    const d = g.getImageData(0, 0, 8, 12).data;
+    let r = 0, gr = 0, b = 0;
+    for (let i = 0; i < d.length; i += 4) { r += d[i]; gr += d[i + 1]; b += d[i + 2]; }
+    const n = d.length / 4;
+    col = `rgb(${Math.round(r / n)}, ${Math.round(gr / n)}, ${Math.round(b / n)})`;
+  } catch { /* unreadable picture: the plain board */ }
+  boardColors.set(src, col);
+  return col;
 }
 const coverFace = () => { const f = $('#stage.closed .cover-face'); return f && !f.hidden ? f : null; };
 
@@ -458,7 +481,6 @@ export async function coverTurn(dir, ms, go) {
   // fading the whole stand-in would flatten it and show the front through
   // the back.
   const swing = (from, to, o1, o2, fly) => {
-    const mid = (o1 + o2) / 2 + (o1 > o2 ? 0.25 : -0.25);
     const opts = { duration: dur, easing: ease, fill: 'forwards' };
     const turn = fly.animate([
       { transform: `perspective(2200px) rotateY(${from}deg)` },
@@ -467,10 +489,15 @@ export async function coverTurn(dir, ms, go) {
     // and each face shows only on its own side of edge-on (not left to
     // backface hiding, which not every way of drawing the window honors)
     const [front, back] = fly.children;
-    const opening = from > to;
-    const firstHalf = opening ? front : back, secondHalf = opening ? back : front;
-    firstHalf.animate([{ opacity: o1, offset: 0 }, { opacity: mid, offset: 0.499 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }], opts);
-    secondHalf.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: mid, offset: 0.501 }, { opacity: o2, offset: 1 }], opts);
+    // the cover stays solid while it turns and fades only as it lies down
+    // on the far side (opening) or comes up from it (closing)
+    if (from > to) {
+      front.animate([{ opacity: 1, offset: 0 }, { opacity: 0.97, offset: 0.499 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }], opts);
+      back.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 0.97, offset: 0.501 }, { opacity: 0.85, offset: 0.78 }, { opacity: 0, offset: 1 }], opts);
+    } else {
+      back.animate([{ opacity: 0, offset: 0 }, { opacity: 0.85, offset: 0.22 }, { opacity: 0.97, offset: 0.499 }, { opacity: 0, offset: 0.5 }, { opacity: 0, offset: 1 }], opts);
+      front.animate([{ opacity: 0, offset: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 0.97, offset: 0.501 }, { opacity: 1, offset: 1 }], opts);
+    }
     return turn.finished.catch(() => {});
   };
   const rv = $('#reader-view');
