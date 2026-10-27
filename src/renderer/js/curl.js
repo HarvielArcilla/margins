@@ -215,30 +215,27 @@ vec4 surface() {
   float spec = 0.0;
   if (uRigid < 0.0 && vD > 0.0 && vD < 3.14159265 * r) {
     float roll = th / 3.14159265; // 0 at the fold, 1 where it lies back down
-    // Paper bending away reflects less toward you, and the inside of the
-    // roll sits under the part already turned over: the front darkens
-    // smoothly into the curl (whichever corner leads), the underside
-    // brightens as it comes back down flat.
-    // the same light on both sides of the crest, so nothing jumps there
-    float light = mix(0.9, 1.0, clamp(abs(dot(n, L)) / L.z, 0.0, 1.0));
-    float crest = smoothstep(0.0, 0.5, roll);       // 0 at the fold, 1 at the crest
-    float landing = smoothstep(0.5, 1.0, roll);     // 0 at the crest, 1 lying flat again
-    if (face >= 0.0) shade = light * (1.0 - 0.3 * crest);
-    else shade = light * mix(0.7, 1.0, landing);
-    // A soft sheen on the front of the page where it starts to lift, the
-    // way light catches a page as it rises: it swells and fades smoothly
-    // over the first part of the roll and is gone well before the crest.
-    // At the crest the paper is seen edge-on, so any light there showed as
-    // a thin bright streak along the turning edge (worst when the corner
-    // is pulled steeply). It is a share of the paper's own color, grows in
-    // as the page lifts and fades as it lands, and waits for the curl to
-    // round out.
+    // Shading depends only on how far the paper is from lying flat, the
+    // same on both faces: where the front of the roll shows beside the
+    // part already turned over (near the page's top and bottom edges when
+    // a corner is pulled at an angle), the two meet at the same brightness.
+    // Lit differently, that meeting line read as a sharp bright streak.
+    float lift = min(roll, 1.0 - roll) * 2.0;        // 0 lying flat, 1 at the crest
+    float light = mix(1.0, 0.9, 1.0 - abs(cos(th)));
+    shade = light * (1.0 - 0.3 * smoothstep(0.0, 1.0, lift));
+    // A soft sheen where the paper starts to lift and where it comes back
+    // down, swelling and fading smoothly, never at the crest. It waits for
+    // the curl to round out.
     float sheen = uShadow * smoothstep(4.0, 30.0, r);
-    if (face >= 0.0) shade += 0.07 * sheen * exp(-pow((roll - 0.2) / 0.12, 2.0));
+    shade += 0.06 * sheen * exp(-pow((lift - 0.4) / 0.24, 2.0)) * smoothstep(0.0, 0.25, lift);
   }
   float isFlat = (uRigid < 0.0 && vD <= 0.0) ? 1.0 : 0.0;
-  float o = flippedOutside(vP);
+  // On the roll, take the shadow found where that strip of paper leaves
+  // the fold, fading as it rises away from the page.
+  bool rolling = uRigid < 0.0 && vD > 0.0;
+  float o = flippedOutside(rolling ? vP - uN * (vD + 0.5) : vP);
   float flatShadow = (o > 0.0 && o < 80.0) ? 0.2 * uFlipped * exp(-o / 16.0) * uShadow : 0.0;
+  if (rolling) flatShadow *= 1.0 - smoothstep(0.0, 0.6, min(th, 3.14159265 - th) / 1.5708);
   if (face >= 0.0) {
     if (uFrontLive > 0.5) {
       // the arriving page lying in place: let the real page show through,
@@ -248,10 +245,13 @@ vec4 surface() {
         float a = smoothstep(0.0, 0.9, uRigid);
         return vec4(paper * shade * a, a);
       }
-      return vec4(paper * shade + spec, 1.0);
+      return vec4(paper * shade * (1.0 - flatShadow) + spec, 1.0);
     }
+    // The shadow of the turned-over part falls on the flat page and carries
+    // on up the front of the roll, so the fold line itself never shows as
+    // a step from shadowed to lit.
     vec3 col = texture2D(uTex, vTex).rgb;
-    return vec4(col * shade * (1.0 - flatShadow * isFlat) + spec, 1.0);
+    return vec4(col * shade * (1.0 - flatShadow) + spec, 1.0);
   } else {
     if (uHasBack > 0.5) {
       // the real page on the back of this leaf
@@ -261,7 +261,7 @@ vec4 surface() {
     // unknown back: paper, with the print faintly showing through (mirrored)
     vec3 front = uFrontLive > 0.5 ? paper : texture2D(uTex, vTex).rgb;
     float ink = clamp(length(front - paper) * 1.6, 0.0, 1.0);
-    vec3 col = mix(paper, front, ink * uShowThrough) * 0.94;
+    vec3 col = mix(paper, front, ink * uShowThrough);
     return vec4((col * shade + spec) * uBackAlpha, uBackAlpha);
   }
   return vec4(0.0);
