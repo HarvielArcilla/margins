@@ -99,22 +99,21 @@ export async function showCover(stage, cover, cols) {
   stage.classList.toggle('closed-spread', cols === 2);
 }
 
-// Where a cover lies on the stage (stage coordinates): as large as the page
-// allows in the cover's own proportions; in two-page view it can't be wider
-// than one page, and lies against the spine (right of it for the front,
-// left of it for the back).
+// Where a closed book's cover lies on the stage (stage coordinates): as
+// large as the pages allow in the cover's own proportions (in two-page view
+// no wider than one page), in the middle. (Opening, the book slides over so
+// the open spread is centered instead; see coverTurn.)
 export function coverBox(stage, { w, h }, cols, side = 'front') {
   // (measured the way the pager is sized, so both draw it to the pixel)
   const box = stage.getBoundingClientRect();
   const W = Math.round(box.width), H = Math.round(box.height);
   const room = cols === 2 ? W / 2 : W;
-  // (a few pixels short of the page height, so its shadow shows)
-  let fh = H - 6, fw = ((H - 6) * w) / h;
+  // the full height of the pages (a cover is never smaller than its pages)
+  let fh = H, fw = (H * w) / h;
   if (fw > room) { fw = room; fh = (room * h) / w; }
   fw = Math.round(fw); fh = Math.round(fh);
-  const mid = Math.round(W / 2);
-  const left = cols === 2 ? (side === 'back' ? mid - fw : mid) : Math.round((W - fw) / 2);
-  return { left, top: Math.round((H - fh) / 2), width: fw, height: fh };
+  // a closed book lies in the middle, in either view
+  return { left: Math.round((W - fw) / 2), top: Math.round((H - fh) / 2), width: fw, height: fh, side };
 }
 
 async function loadDoc(book, i) {

@@ -443,12 +443,13 @@ export async function animate(kind, sign, ms, go, dir = sign, at = null) {
 // so the page curl and flip don't suit it.)
 const coverFace = () => { const f = $('#stage.closed .cover-face'); return f && !f.hidden ? f : null; };
 
+let rig = null; // the moving covers' holder while the book slides (see coverTurn)
 function leafAt(rect, cls, origin) {
   const d = document.createElement('div');
   d.className = `cover-leaf ${cls}`;
   Object.assign(d.style, { left: `${rect.left}px`, top: `${rect.top}px`, width: `${rect.width}px`, height: `${rect.height}px`, transformOrigin: origin });
   // inside the reader, so it takes the page's rounded corners
-  $('#reader-view').append(d);
+  (rig || $('#reader-view')).append(d);
   return d;
 }
 // The page's atmosphere (vignette, night light, dimming) lies over the
@@ -536,31 +537,70 @@ export async function coverTurn({ side, toCover }, ms, go) {
     return `inset(${r.top - s.top}px ${s.right - (r.left + r.width)}px ${s.bottom - (r.top + r.height)}px ${r.left - s.left}px round ${corners})`;
   };
 
+  // Two pages across, a closed book lies in the middle and an open one is
+  // centered on its spine: the book slides over by half the cover's width as
+  // it opens or closes, the moving cover with it. Where the open cover lies
+  // (against the spine) and how far it is from the middle:
+  const openRect = (size) => {
+    const b = coverBox(stage, size, 2, side);
+    const mid = Math.round(sr().width / 2);
+    return screenRect({ ...b, left: side === 'back' ? mid - b.width : mid });
+  };
+  const slide = (from, to) => {
+    const opts = { duration: dur, easing: 'cubic-bezier(.45,0,.35,1)', fill: 'forwards' };
+    const kf = [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }];
+    stage.animate(kf, opts);
+    return rig.animate(kf, opts).finished.catch(() => {});
+  };
+  // The crease between the pages belongs to an open book: none while only
+  // one side shows, then it deepens as the other side comes down (or fades
+  // as it lifts).
+  const crease = (on) => {
+    const sp = $('#spine');
+    if (!sp) return;
+    sp.animate(on ? [{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }],
+      { duration: dur, easing: 'linear', fill: 'forwards' });
+  };
+
   // from the cover to the pages next to it
   async function leave() {
     const face = coverFace();
     if (!face) return go();
     const fr = face.getBoundingClientRect();
-    const front = coverLeaf(fr, face.querySelector('img').src, side);
-    leaves.push(front);
+    const src = face.querySelector('img').src;
     stage.style.opacity = '0';
-    await go();
-    await settled();
     if (spread) {
-      stage.style.clipPath = onlyCoverHalf();
-      stage.style.opacity = '';
+      const size = { w: fr.width, h: fr.height };
+      const or = openRect(size);
+      const shift = fr.left - or.left; // closed (middle) from open (at the spine)
+      rig.style.transform = `translateX(${shift}px)`;
+      const front = coverLeaf(or, src, side);
+      leaves.push(front);
+      // (placed while the page area is where it rests, as it will be open)
       const inside = insideLeaf(half(insideHalf), side);
       leaves.push(inside);
       inside.style.transform = `perspective(2400px) rotateY(${90 * m}deg)`;
+      await go();
+      await settled();
+      stage.style.transform = `translateX(${shift}px)`;
+      stage.style.clipPath = onlyCoverHalf();
+      stage.style.opacity = '';
       // (the page around a cover narrower than it shows as the cover lifts)
       stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: dur * 0.3, easing: 'ease-out' });
+      crease(true);
+      const slid = slide(shift, 0);
       await quarter(front, 0, -90 * m, dur / 2, RISE);
       front.style.visibility = 'hidden';
       await quarter(inside, 90 * m, 0, dur / 2, LAND);
+      await slid;
       // landed: the blank page takes over from it
       stage.style.clipPath = '';
       await inside.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 120, fill: 'forwards' }).finished.catch(() => {});
     } else {
+      const front = coverLeaf(fr, src, side);
+      leaves.push(front);
+      await go();
+      await settled();
       stage.style.clipPath = toRect(fr);
       stage.style.opacity = '';
       await quarter(front, 0, -90 * m, dur * 0.55, RISE);
@@ -580,20 +620,30 @@ export async function coverTurn({ side, toCover }, ms, go) {
       for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
       return;
     }
-    const cr = screenRect(coverBox(stage, await measure(src), spread ? 2 : 1, side));
-    const front = coverLeaf(cr, src, side);
-    leaves.push(front);
-    front.style.transform = `perspective(2400px) rotateY(${-90 * m}deg)`;
+    const size = await measure(src);
     if (spread) {
-      // the blank page facing the text rises, then comes down as the cover
+      const or = openRect(size);
+      const shift = screenRect(coverBox(stage, size, 2, side)).left - or.left;
+      const front = coverLeaf(or, src, side);
+      leaves.push(front);
+      front.style.transform = `perspective(2400px) rotateY(${-90 * m}deg)`;
+      // the blank page facing the text rises, then comes down as the cover,
+      // and the book slides back to the middle
       const inside = insideLeaf(half(insideHalf), side);
       leaves.push(inside);
       stage.style.clipPath = onlyCoverHalf();
+      crease(false);
+      const slid = slide(0, shift);
       await quarter(inside, 0, 90 * m, dur / 2, RISE);
       inside.style.visibility = 'hidden';
       stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: dur / 2, easing: 'ease-in', fill: 'forwards' });
       await quarter(front, -90 * m, 0, dur / 2, LAND);
+      await slid;
     } else {
+      const cr = screenRect(coverBox(stage, size, 1, side));
+      const front = coverLeaf(cr, src, side);
+      leaves.push(front);
+      front.style.transform = `perspective(2400px) rotateY(${-90 * m}deg)`;
       // the page closes in to the size of the book, and the cover comes down on it
       await stage.animate([{ clipPath: fullClip }, { clipPath: toRect(cr) }],
         { duration: dur * 0.45, easing: 'cubic-bezier(.6,0,.8,.4)', fill: 'forwards' }).finished.catch(() => {});
@@ -602,16 +652,23 @@ export async function coverTurn({ side, toCover }, ms, go) {
     // the real cover goes in under the stand-in
     stage.getAnimations().forEach((x) => x.cancel());
     stage.style.opacity = '0';
+    stage.style.transform = '';
     await go();
     for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
   }
 
   return animation(async () => {
     rv.classList.add('cover-turning');
+    rig = document.createElement('div');
+    rig.className = 'cover-rig';
+    rv.append(rig);
     try { await (toCover ? arrive() : leave()); } finally {
       stage.getAnimations().forEach((x) => x.cancel());
-      Object.assign(stage.style, { opacity: '', clipPath: '' });
+      $('#spine')?.getAnimations().forEach((x) => x.cancel());
+      Object.assign(stage.style, { opacity: '', clipPath: '', transform: '' });
       leaves.forEach((l) => l.remove());
+      rig.remove();
+      rig = null;
       rv.classList.remove('cover-turning');
     }
   }).finally(() => schedulePrepare());
