@@ -84,9 +84,11 @@ let liveAnims = null;      // a picture slide's running animations
 let rushing = false;       // a cover turn: the parts still to come go quickly
 export function turnProgress() {
   if (!motion) return 1;
-  if (clock) return clockAt(performance.now());
+  // (how far it has visibly moved, after easing, not how much of its time
+  // has passed: a page settling slowly at the end already looks turned)
+  if (clock) { const x = clockAt(performance.now()); return clock.ease ? clock.ease(x) : x; }
   const a = liveAnims?.[0];
-  if (a) { const d = a.effect?.getTiming?.().duration || 1; return Math.min(1, (a.currentTime || 0) / d); }
+  if (a) { const p = a.effect?.getComputedTiming?.().progress; if (p != null) return p; const d = a.effect?.getTiming?.().duration || 1; return Math.min(1, (a.currentTime || 0) / d); }
   if (rig) return rigProgress();
   return 0.5;
 }
@@ -903,7 +905,7 @@ async function leafTurn(kind, sign, ms, go, s, ctx) {
   const duration = quickTurn ? QUICK_LEAF : Math.min(1400, Math.max(420, ms * 2.2));
   const ease = rigid ? flipEase : curlEase;
   motion = true; // (only now: waiting for pictures, nothing has moved yet)
-  await run(duration, (x) => { const k = ease(x); frame(at(k), k); }, true);
+  await run(duration, (x) => { const k = ease(x); frame(at(k), k); }, true, ease);
   ctx.done = true;
   motion = false;
   await finish(e, { exact: !!setup.under || !!setup.back, cfi: here() });
@@ -936,10 +938,10 @@ function adapt(intervals) {
   engine.quality = QUALITY[qualityStep];
 }
 
-function run(duration, frame, measure = false) {
+function run(duration, frame, measure = false, ease = null) {
   return new Promise((resolve) => {
     const start = performance.now();
-    clock = { start, dur: duration, rushAt: null };
+    clock = { start, dur: duration, rushAt: null, ease };
     const gaps = [];
     let last = start;
     const tick = (now) => {
