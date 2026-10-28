@@ -17,24 +17,30 @@ const queued = [];
 let dragging = false;
 
 // dir: +1 forward in reading order, -1 back.
-// A turn asked for while one is still moving stops that one where it is and
-// goes on at once, without an animation; one asked for after it has
-// finished animates as usual, however soon. Every press is one page.
-export async function turn(dir, { source = 'user', at = null } = {}) {
+// A click or press while a page is still moving just stops it, the book
+// landing on the page it was turning to; it doesn't turn another page.
+// Asked for once nothing is moving, a turn animates as usual, however soon.
+// Holding a key down (the key repeating) flips page after page without
+// animations.
+export async function turn(dir, { source = 'user', at = null, repeat = false } = {}) {
   if (!R.rendition) return;
   if (source === 'user') { stats.activity(); resetAutoTurn(); if (getSettings().autoPauseOnInteract && autoScroll.on) stopAuto(); }
   if (dragging) return;
   if (pastCover(dir)) return;
   const s = getSettings();
-  const rapid = source === 'queue';
   if (busy) {
-    // still moving: stop it, and this one goes at once; moving no more (the
-    // turn is just tidying up): this one animates as usual
-    const instant = inMotion() || queued.some((q) => q.instant);
-    if (instant) hurryUp();
-    if (queued.length < 8) queued.push({ dir, instant });
+    if (inMotion()) {
+      hurryUp();
+      if (repeat && queued.length < 8) queued.push({ dir, instant: true });
+      return;
+    }
+    // nothing moving any more (the turn is just tidying up): this one
+    // animates as usual once it's done
+    if (queued.length < 8) queued.push({ dir, instant: repeat });
     return;
   }
+  // queued behind a stopped turn, or a held key: no animation
+  const rapid = source === 'queue' || repeat;
   busy = true;
   R.turning = true;
   try {
@@ -165,7 +171,7 @@ export function handleKey(e) {
   else if (k === 'Enter' && s.flow === 'paginated') dir = 1;
   if (!dir) return false;
   e.preventDefault();
-  turn(dir);
+  turn(dir, { repeat: e.repeat });
   return true;
 }
 
