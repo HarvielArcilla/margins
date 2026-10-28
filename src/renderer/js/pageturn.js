@@ -18,15 +18,18 @@ let dragging = false;
 
 // dir: +1 forward in reading order, -1 back.
 // Every click or press is one page. Only the motion adapts:
+// - asked for in the last stretch of a turn (or once nothing moves), it's
+//   taken as a new turn: an ordinary one, as soon as that turn lands;
 // - asked for late in a turn (the page already looks turned), it's queued
-//   and animates as soon as that turn lands;
+//   and goes quickly as soon as that turn lands;
 // - asked for earlier, the turn hurries through the rest of its motion and
-//   the next one animates after it;
+//   the next one goes quickly after it;
 // - a third one while turns are still stacked up means flipping: the turn
 //   on screen ends at once and turns go instantly, until there's a short
 //   pause; then they animate again.
 // Holding a key down (the key repeating) is flipping from the first repeat.
-const LATE = 0.6;          // how far through a turn counts as "already turned"
+const LATE = 0.6;          // how far through a turn it no longer needs hurrying
+const DONE = 0.9;          // ...and after which it's taken as finished
 const FLIP_PAUSE = 350;    // ms without a turn asked for that ends flipping
 let flipping = false;
 let flipTimer = 0;
@@ -34,7 +37,7 @@ function stillFlipping() {
   clearTimeout(flipTimer);
   flipTimer = setTimeout(() => { flipping = false; }, FLIP_PAUSE);
 }
-export async function turn(dir, { source = 'user', at = null, repeat = false } = {}) {
+export async function turn(dir, { source = 'user', at = null, repeat = false, quick: quickAsked = false } = {}) {
   if (!R.rendition) return;
   if (source === 'user') { stats.activity(); resetAutoTurn(); if (getSettings().autoPauseOnInteract && autoScroll.on) stopAuto(); }
   if (dragging) return;
@@ -52,8 +55,14 @@ export async function turn(dir, { source = 'user', at = null, repeat = false } =
       if (queued.length < 12) queued.push({ dir, instant: true });
       return;
     }
-    if (inMotion() && turnProgress() < LATE) rush(110);
-    queued.push({ dir, instant: false });
+    // How far the turn on screen has got decides how the next one goes:
+    // early on, this one hurries and the next follows quickly; past LATE the
+    // page looks turned, so this one finishes as it is and the next still
+    // follows quickly; in the last stretch (or once nothing moves) the reader
+    // most likely took it as done, so the next is an ordinary turn.
+    const p = inMotion() ? turnProgress() : 1;
+    if (p < LATE) rush(110);
+    queued.push({ dir, instant: false, quick: p < DONE });
     return;
   }
   if (repeat && asked) { flipping = true; stillFlipping(); }
@@ -61,7 +70,7 @@ export async function turn(dir, { source = 'user', at = null, repeat = false } =
   const rapid = source === 'queue' || repeat || (asked && flipping);
   // a turn that was waiting behind another goes at the pace the one before
   // it was hurried through at: the reader is already on the way
-  const quick = source === 'queued';
+  const quick = source === 'queued' && quickAsked;
   const ms = s.animationMs;
   busy = true;
   R.turning = true;
@@ -84,7 +93,7 @@ export async function turn(dir, { source = 'user', at = null, repeat = false } =
     R.turnedAt = performance.now();
   }
   const q = queued.shift();
-  if (q) turn(q.dir, { source: q.instant ? 'queue' : 'queued' });
+  if (q) turn(q.dir, { source: q.instant ? 'queue' : 'queued', quick: !!q.quick });
 }
 
 // Visual direction: in right-to-left books the next page is on the left.
