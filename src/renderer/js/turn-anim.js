@@ -77,6 +77,45 @@ let hurry = false;
 // a moment, waiting for the book underneath to be ready to show.)
 let motion = false;
 export const inMotion = () => motion;
+// How far the moving page has got (0..1), and hurrying the rest of it
+// through in `ms` rather than stopping it.
+let clock = null;          // the frame loop's: { start, dur, rushAt, rushFrom, rushMs }
+let liveAnims = null;      // a picture slide's running animations
+let rushing = false;       // a cover turn: the parts still to come go quickly
+export function turnProgress() {
+  if (!motion) return 1;
+  if (clock) return clockAt(performance.now());
+  const a = liveAnims?.[0];
+  if (a) { const d = a.effect?.getTiming?.().duration || 1; return Math.min(1, (a.currentTime || 0) / d); }
+  if (rig) return rigProgress();
+  return 0.5;
+}
+function clockAt(now) {
+  const c = clock;
+  if (c.rushAt != null) return Math.min(1, c.rushFrom + (1 - c.rushFrom) * ((now - c.rushAt) / c.rushMs));
+  return Math.min(1, (now - c.start) / c.dur);
+}
+export function rush(ms = 120) {
+  if (!motion) return;
+  if (clock && clock.rushAt == null) {
+    const now = performance.now();
+    clock.rushFrom = clockAt(now);
+    clock.rushAt = now;
+    clock.rushMs = ms;
+  }
+  const speed = (a) => {
+    const d = a.effect?.getTiming?.().duration || 0;
+    const left = Math.max(0, d - (a.currentTime || 0));
+    if (left > ms) a.updatePlaybackRate(left / ms);
+  };
+  liveAnims?.forEach(speed);
+  if (rig) {
+    rushing = true;
+    for (const el of [rig, ...rig.querySelectorAll('*'), $('#stage'), $('#spine')]) el?.getAnimations().forEach(speed);
+  }
+}
+let rigStart = 0, rigDur = 1;
+const rigProgress = () => Math.min(1, (performance.now() - rigStart) / rigDur);
 // Another turn asked for while one runs: the running one stops where it is
 // (the book is already on its new page underneath) and the next follows at
 // once.
@@ -526,7 +565,7 @@ function quarter(el, from, to, dur, easing) {
   const tf = (a) => `perspective(2400px) rotateY(${a}deg)`;
   const shade = (a) => `brightness(${1 - 0.28 * Math.abs(Math.sin((a * Math.PI) / 180))})`;
   return el.animate([{ transform: tf(from), filter: shade(from) }, { transform: tf(to), filter: shade(to) }],
-    { duration: hurry ? 1 : dur, easing, fill: 'forwards' }).finished.catch(() => {});
+    { duration: hurry ? 1 : rushing ? 90 : dur, easing, fill: 'forwards' }).finished.catch(() => {});
 }
 const RISE = 'cubic-bezier(.45,0,.9,.6)';
 const LAND = 'cubic-bezier(.1,.4,.55,1)';
@@ -570,7 +609,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
     return screenRect({ ...b, left: side === 'back' ? mid - b.width : mid });
   };
   const slide = (from, to) => {
-    const opts = { duration: hurry ? 1 : dur, easing: 'cubic-bezier(.45,0,.35,1)', fill: 'forwards' };
+    const opts = { duration: hurry ? 1 : rushing ? 90 : dur, easing: 'cubic-bezier(.45,0,.35,1)', fill: 'forwards' };
     const kf = [{ transform: `translateX(${from}px)` }, { transform: `translateX(${to}px)` }];
     stage.animate(kf, opts);
     return rig.animate(kf, opts).finished.catch(() => {});
@@ -582,7 +621,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
     const sp = $('#spine');
     if (!sp) return;
     sp.animate(on ? [{ opacity: 0 }, { opacity: 0, offset: 0.5 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0, offset: 0.5 }, { opacity: 0 }],
-      { duration: hurry ? 1 : dur, easing: 'linear', fill: 'forwards' });
+      { duration: hurry ? 1 : rushing ? 90 : dur, easing: 'linear', fill: 'forwards' });
   };
 
   // from the cover to the pages next to it
@@ -609,7 +648,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
       stage.style.clipPath = onlyCoverHalf();
       stage.style.opacity = '';
       // (the page around a cover narrower than it shows as the cover lifts)
-      stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: hurry ? 1 : dur * 0.3, easing: 'ease-out' });
+      stage.animate([{ opacity: 0 }, { opacity: 1 }], { duration: hurry ? 1 : rushing ? 90 : dur * 0.3, easing: 'ease-out' });
       crease(true);
       const slid = slide(shift, 0);
       await quarter(front, 0, -90 * m, dur / 2, RISE);
@@ -618,7 +657,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
       await slid;
       // landed: the blank page takes over from it
       stage.style.clipPath = '';
-      await inside.animate([{ opacity: 1 }, { opacity: 0 }], { duration: hurry ? 1 : 120, fill: 'forwards' }).finished.catch(() => {});
+      await inside.animate([{ opacity: 1 }, { opacity: 0 }], { duration: hurry ? 1 : rushing ? 90 : 120, fill: 'forwards' }).finished.catch(() => {});
     } else {
       const front = coverLeaf(fr, src, side);
       leaves.push(front);
@@ -629,7 +668,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
       await quarter(front, 0, -90 * m, dur * 0.55, RISE);
       front.style.visibility = 'hidden';
       await stage.animate([{ clipPath: toRect(fr) }, { clipPath: fullClip }],
-        { duration: hurry ? 1 : dur * 0.45, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => {});
+        { duration: hurry ? 1 : rushing ? 90 : dur * 0.45, easing: 'cubic-bezier(.2,.7,.3,1)', fill: 'forwards' }).finished.catch(() => {});
     }
   }
 
@@ -638,7 +677,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
     const src = side === 'back' ? R.backSrc : R.coverSrc;
     if (!src) {
       // the cover's picture isn't known: just let the pages go
-      await stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: hurry ? 1 : dur * 0.4, fill: 'forwards' }).finished.catch(() => {});
+      await stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: hurry ? 1 : rushing ? 90 : dur * 0.4, fill: 'forwards' }).finished.catch(() => {});
       await go();
       for (let i = 0; i < 40 && !coverFace(); i++) await nextFrame();
       return;
@@ -659,7 +698,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
       const slid = slide(0, shift);
       await quarter(inside, 0, 90 * m, dur / 2, RISE);
       inside.style.visibility = 'hidden';
-      stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: hurry ? 1 : dur / 2, easing: 'ease-in', fill: 'forwards' });
+      stage.animate([{ opacity: 1 }, { opacity: 0 }], { duration: hurry ? 1 : rushing ? 90 : dur / 2, easing: 'ease-in', fill: 'forwards' });
       await quarter(front, -90 * m, 0, dur / 2, LAND);
       await slid;
     } else {
@@ -669,7 +708,7 @@ export async function coverTurn({ side, toCover }, ms, go) {
       front.style.transform = `perspective(2400px) rotateY(${-90 * m}deg)`;
       // the page closes in to the size of the book, and the cover comes down on it
       await stage.animate([{ clipPath: fullClip }, { clipPath: toRect(cr) }],
-        { duration: hurry ? 1 : dur * 0.45, easing: 'cubic-bezier(.6,0,.8,.4)', fill: 'forwards' }).finished.catch(() => {});
+        { duration: hurry ? 1 : rushing ? 90 : dur * 0.45, easing: 'cubic-bezier(.6,0,.8,.4)', fill: 'forwards' }).finished.catch(() => {});
       await quarter(front, -90 * m, 0, dur * 0.55, LAND);
     }
     // the real cover goes in under the stand-in
@@ -681,6 +720,8 @@ export async function coverTurn({ side, toCover }, ms, go) {
   }
 
   motion = true;
+  rushing = false;
+  rigStart = performance.now(); rigDur = dur;
   return animation(async () => {
     rv.classList.add('cover-turning');
     rig = document.createElement('div');
@@ -893,15 +934,16 @@ function adapt(intervals) {
 function run(duration, frame, measure = false) {
   return new Promise((resolve) => {
     const start = performance.now();
+    clock = { start, dur: duration, rushAt: null };
     const gaps = [];
     let last = start;
     const tick = (now) => {
       gaps.push(now - last);
       last = now;
-      const x = hurry ? 1 : Math.min(1, (now - start) / duration);
+      const x = hurry ? 1 : clockAt(now);
       frame(x);
       if (x < 1) requestAnimationFrame(tick);
-      else { if (measure && !hurry) adapt(gaps.slice(1)); resolve(); }
+      else { const rushed = clock?.rushAt != null; clock = null; if (measure && !hurry && !rushed) adapt(gaps.slice(1)); resolve(); }
     };
     requestAnimationFrame(tick);
   });
@@ -1075,9 +1117,11 @@ async function sheetTurn(kind, sign, ms, go, s, ctx) {
     anims.push(edge.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${s.W}px)` }], { duration: dur, easing: ease, fill: 'forwards' }));
   }
   motion = true;
+  liveAnims = anims;
   const watch = setInterval(() => { if (hurry) anims.forEach((a) => a.finish()); }, 16);
   await Promise.all(anims.map((a) => a.finished.catch(() => {})));
   clearInterval(watch);
+  liveAnims = null;
   ctx.done = true;
   motion = false;
   c.classList.remove('shadowed');

@@ -7,7 +7,7 @@ import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
-import { animate, coverTurn, hurryUp, inMotion, startDrag, ANIMATIONS } from './turn-anim.js';
+import { animate, coverTurn, hurryUp, inMotion, turnProgress, rush, startDrag, ANIMATIONS } from './turn-anim.js';
 
 export { ANIMATIONS };
 
@@ -17,30 +17,48 @@ const queued = [];
 let dragging = false;
 
 // dir: +1 forward in reading order, -1 back.
-// A click or press while a page is still moving just stops it, the book
-// landing on the page it was turning to; it doesn't turn another page.
-// Asked for once nothing is moving, a turn animates as usual, however soon.
-// Holding a key down (the key repeating) flips page after page without
-// animations.
+// Every click or press is one page. Only the motion adapts:
+// - asked for late in a turn (the page already looks turned), it's queued
+//   and animates as soon as that turn lands;
+// - asked for earlier, the turn hurries through the rest of its motion and
+//   the next one animates after it;
+// - a third one while turns are still stacked up means flipping: the turn
+//   on screen ends at once and turns go instantly, until there's a short
+//   pause; then they animate again.
+// Holding a key down (the key repeating) is flipping from the first repeat.
+const LATE = 0.6;          // how far through a turn counts as "already turned"
+const FLIP_PAUSE = 350;    // ms without a turn asked for that ends flipping
+let flipping = false;
+let flipTimer = 0;
+function stillFlipping() {
+  clearTimeout(flipTimer);
+  flipTimer = setTimeout(() => { flipping = false; }, FLIP_PAUSE);
+}
 export async function turn(dir, { source = 'user', at = null, repeat = false } = {}) {
   if (!R.rendition) return;
   if (source === 'user') { stats.activity(); resetAutoTurn(); if (getSettings().autoPauseOnInteract && autoScroll.on) stopAuto(); }
   if (dragging) return;
   if (pastCover(dir)) return;
   const s = getSettings();
+  const asked = source === 'user';
+  if (asked && flipping) stillFlipping();
   if (busy) {
-    if (inMotion()) {
+    if (repeat || flipping || queued.length >= 1) {
+      // flipping: no more animations until a pause
+      flipping = true;
+      stillFlipping();
       hurryUp();
-      if (repeat && queued.length < 8) queued.push({ dir, instant: true });
+      queued.forEach((q) => { q.instant = true; });
+      if (queued.length < 12) queued.push({ dir, instant: true });
       return;
     }
-    // nothing moving any more (the turn is just tidying up): this one
-    // animates as usual once it's done
-    if (queued.length < 8) queued.push({ dir, instant: repeat });
+    if (inMotion() && turnProgress() < LATE) rush(110);
+    queued.push({ dir, instant: false });
     return;
   }
-  // queued behind a stopped turn, or a held key: no animation
-  const rapid = source === 'queue' || repeat;
+  if (repeat && asked) { flipping = true; stillFlipping(); }
+  // queued while flipping, a held key, or flipping still: no animation
+  const rapid = source === 'queue' || repeat || (asked && flipping);
   busy = true;
   R.turning = true;
   try {
