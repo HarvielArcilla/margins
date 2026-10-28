@@ -455,7 +455,12 @@ function onPage(p) {
 // sign: +1 for a turn that moves visually leftward (forward in left-to-right
 // books), -1 for the reverse. dir: +1 forward in reading order, -1 back.
 let warned = false;
-export async function animate(kind, sign, ms, go, dir = sign, at = null) {
+// quick: a turn that was waiting behind another goes at the pace that one
+// was hurried through at.
+let quickTurn = false;
+const QUICK_LEAF = 220, QUICK_SHEET = 170, QUICK_COVER = 300;
+export async function animate(kind, sign, ms, go, dir = sign, at = null, { quick = false } = {}) {
+  quickTurn = quick;
   hurry = false;
   clickedAt = at;
   if (kind === 'none') return go();
@@ -570,11 +575,11 @@ function quarter(el, from, to, dur, easing) {
 const RISE = 'cubic-bezier(.45,0,.9,.6)';
 const LAND = 'cubic-bezier(.1,.4,.55,1)';
 
-export async function coverTurn({ side, toCover }, ms, go) {
+export async function coverTurn({ side, toCover }, ms, go, { quick = false } = {}) {
   hurry = false;
   const stage = $('#stage');
   const rv = $('#reader-view');
-  const dur = Math.max(520, ms * 1.4);
+  const dur = quick ? QUICK_COVER : Math.max(520, ms * 1.4);
   const spread = R.cols === 2;
   const m = side === 'back' ? -1 : 1; // the back cover turns the other way
   const radius = parseFloat(getComputedStyle(rv).getPropertyValue('--page-radius')) || 0;
@@ -895,7 +900,7 @@ async function leafTurn(kind, sign, ms, go, s, ctx) {
       if (setup.landsOnPage && t < 0.2) { setup.back = p.bitmap; e.setBack(p.bitmap); }
     });
   }
-  const duration = Math.min(1400, Math.max(420, ms * 2.2));
+  const duration = quickTurn ? QUICK_LEAF : Math.min(1400, Math.max(420, ms * 2.2));
   const ease = rigid ? flipEase : curlEase;
   motion = true; // (only now: waiting for pictures, nothing has moved yet)
   await run(duration, (x) => { const k = ease(x); frame(at(k), k); }, true);
@@ -1064,7 +1069,7 @@ async function sheetTurn(kind, sign, ms, go, s, ctx) {
   const n = arrivingNow(ctx);
   let incoming = n ? showUnder(n) : $('#viewer');
   if (!n) await settled();
-  const d = Math.max(180, ms * 1.25);
+  const d = quickTurn ? QUICK_SHEET : Math.max(180, ms * 1.25);
   const ease = 'cubic-bezier(.25,.8,.25,1)';
   const plans = {
     fade: { out: [{ opacity: 1 }, { opacity: 0 }] },
