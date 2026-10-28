@@ -1,7 +1,7 @@
 // The reader: opens a book with epub.js, lays it out, styles its pages, and
 // tracks where you are. Page turning, annotations, stats and speech plug in
 // through the hooks below.
-import { findCover, findBackCover, showCover, coverIndex, backCoverIndex, imageUrl } from './cover.js';
+import { findCover, findBackCover, showCover, coverPlan } from './cover.js';
 import { $, setChildren, el, debounce, toast, countWords, clamp } from './ui.js';
 import { getSettings, onSettings, attachBook, detachBook } from './settings.js';
 import { findTheme, applyChromeTheme, isDark, mix, luminance } from './themes.js';
@@ -53,12 +53,11 @@ export async function openBook(meta, { at } = {}) {
   const bytes = await window.api.library.read(meta.id);
   R.book = window.ePub(bytes);
   await R.book.ready;
-  R.coverIndex = await coverIndex(R.book);
-  R.backIndex = await backCoverIndex(R.book, R.coverIndex);
-  // their pictures, for closing the book onto a cover not yet shown
-  R.coverSrc = await imageUrl(R.book, R.coverIndex);
-  if (!R.coverSrc && R.coverIndex >= 0) { try { R.coverSrc = await R.book.coverUrl(); } catch { /* none */ } }
-  R.backSrc = await imageUrl(R.book, R.backIndex);
+  // the covers, and their pictures (for closing the book onto one not yet shown)
+  {
+    const plan = await coverPlan(R.book);
+    Object.assign(R, { coverIndex: plan.front, coverSrc: plan.frontSrc, backIndex: plan.back, backSrc: plan.backSrc, virtualBack: plan.virtualBack, atBack: false });
+  }
   R.rtl = (R.book.package?.metadata?.direction || R.book.package?.spine?.direction) === 'rtl'
     || R.book.packaging?.metadata?.direction === 'rtl';
   R.cache = await window.api.bookCache.get(meta.id);
@@ -299,7 +298,9 @@ window.addEventListener('resize', () => {
 // The cover pages are drawn as the book's covers (see cover.js).
 const coverOn = (contents) => findCover(contents) || findBackCover(contents, R.backIndex);
 function updateCover(contents = R.rendition?.getContents?.()[0]) {
-  const on = getSettings().flow === 'paginated' ? coverOn(contents) : null;
+  const paged = getSettings().flow === 'paginated';
+  // (a plain back cover isn't a part of the book: the reader is "at" it)
+  const on = !paged ? null : R.atBack && R.backSrc ? { src: R.backSrc, alt: 'Back cover', side: 'back' } : coverOn(contents);
   showCover($('#stage'), on, R.cols).catch((e) => console.error(e));
 }
 
@@ -315,7 +316,8 @@ export function coverTurnAt(dir) {
   if (R.backIndex >= 0) {
     const e = loc.end || loc.start;
     if (dir > 0 && e.index === R.backIndex - 1 && (e.displayed?.page ?? 0) >= (e.displayed?.total ?? 1)) return { side: 'back', toCover: true };
-    if (dir < 0 && loc.start.index === R.backIndex) return { side: 'back', toCover: false };
+    if (dir < 0 && (R.atBack || loc.start.index === R.backIndex)) return { side: 'back', toCover: false };
+    if (R.atBack) return null;
   }
   return null;
 }
@@ -325,6 +327,14 @@ export function coverTurnAt(dir) {
 export function coverGo({ side, toCover }) {
   const at = (i) => R.rendition.display(R.book.spine.get(i).href);
   if (side === 'front') return at(toCover ? R.coverIndex : R.coverIndex + 1);
+  if (R.virtualBack) {
+    // the plain back cover: closing onto it and opening it again leave the
+    // book where it is
+    R.atBack = toCover;
+    updateCover();
+    updateFooter();
+    return Promise.resolve();
+  }
   return toCover ? at(R.backIndex) : R.rendition.prev();
 }
 
@@ -475,6 +485,7 @@ function onSettingsChanged(s, changed) {
 function onRelocated(location) {
   const prev = R.location;
   R.location = location;
+  if (R.atBack && prev && prev.start.cfi !== location.start.cfi) R.atBack = false;
   updateCover();
   // Keep the anchor while it is still on screen (relayouts, late events);
   // once the reader moves to a page without it, the new page becomes it.
@@ -571,7 +582,7 @@ export function updateFooter() {
     title: R.meta.title || '',
     time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     clock: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-    page: s.flow === 'paginated' && loc.start.index === R.coverIndex ? 'Cover' : s.flow === 'paginated' && loc.start.index === R.backIndex ? 'Back cover' : s.flow === 'paginated' && d.total ? `Page ${d.page} of ${d.total} in chapter` : '',
+    page: s.flow === 'paginated' && loc.start.index === R.coverIndex ? 'Cover' : s.flow === 'paginated' && (R.atBack || loc.start.index === R.backIndex) ? 'Back cover' : s.flow === 'paginated' && d.total ? `Page ${d.page} of ${d.total} in chapter` : '',
     'chapter-left': tl ? `${fmtMin(tl.chapter)} left in chapter` : '',
     'book-left': tl ? `${fmtMin(tl.book)} left in book` : '',
     percent: pct != null ? `${Math.round(pct * 100)}%` : '',

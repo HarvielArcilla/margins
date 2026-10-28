@@ -451,13 +451,34 @@ function leafAt(rect, cls, origin) {
   $('#reader-view').append(d);
   return d;
 }
+// The page's atmosphere (vignette, night light, dimming) lies over the
+// pages; a leaf moves over it, so it carries its own copy, matched to where
+// it lies (exact while flat, and turning with it as it lifts).
+function withAtmosphere(d, rect) {
+  const rv = $('#reader-view');
+  const box = rv.getBoundingClientRect();
+  const level = (k) => parseFloat(rv.style.getPropertyValue(`--fx-${k}`)) || 0;
+  const add = (cls, style) => { const x = document.createElement('div'); x.className = `leaf-fx ${cls}`; Object.assign(x.style, style); d.append(x); };
+  const vig = level('vignette');
+  const vEl = rv.querySelector('.fx-vignette');
+  if (vig > 0.001 && vEl) {
+    add('leaf-vignette', {
+      backgroundImage: getComputedStyle(vEl).backgroundImage, opacity: String(vig),
+      backgroundSize: `${box.width}px ${box.height}px`, backgroundRepeat: 'no-repeat',
+      backgroundPosition: `${box.left - rect.left}px ${box.top - rect.top}px`,
+    });
+  }
+  if (level('warm') > 0.001) add('leaf-warm', { background: '#ff7a10', opacity: String(level('warm')) });
+  if (level('dim') > 0.001) add('leaf-dim', { background: '#000', opacity: String(level('dim')) });
+  return d;
+}
 function coverLeaf(rect, src, side) {
   const d = leafAt(rect, `cover-face${side === 'back' ? ' back' : ''}`, side === 'back' ? 'right center' : 'left center');
   const im = document.createElement('img');
   im.src = src;
   im.alt = '';
   d.append(im);
-  return d;
+  return withAtmosphere(d, rect);
 }
 // the inside of a cover: a blank page, paper texture and all, like the page
 // it becomes
@@ -472,7 +493,7 @@ function insideLeaf(rect, side) {
     Object.assign(t.style, { backgroundImage: paper.style.backgroundImage, backgroundSize: paper.style.backgroundSize, opacity: paper.style.opacity, backgroundPosition: `${-off}px 0` });
     d.append(t);
   }
-  return d;
+  return withAtmosphere(d, rect);
 }
 
 // one quarter turn of a leaf about its hinge, darkening as it rises off

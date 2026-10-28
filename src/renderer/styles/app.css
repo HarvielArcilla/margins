@@ -839,6 +839,7 @@ body.focus-mode #turn-over { top: 0; bottom: 0; }
 .cover-inside { background: var(--bg); overflow: hidden; border-radius: var(--page-radius, 0px) 0 0 var(--page-radius, 0px);
   box-shadow: inset -14px 0 22px -14px rgba(0,0,0,.28), 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent); }
 .cover-inside.back { border-radius: 0 var(--page-radius, 0px) var(--page-radius, 0px) 0; box-shadow: inset 14px 0 22px -14px rgba(0,0,0,.28), 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent); }
+.leaf-fx { position: absolute; inset: 0; pointer-events: none; z-index: 3; border-radius: inherit; }
 .cover-inside-paper { position: absolute; inset: 0; background-repeat: repeat; background-position: 0 0; pointer-events: none; }
 /* the back cover lies the other way round: its hinge on the right */
 .cover-face.back { border-radius: var(--page-radius, 3px) 2px 2px var(--page-radius, 3px); }

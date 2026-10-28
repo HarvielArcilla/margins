@@ -5,7 +5,7 @@ import { applyChromeTheme, isDark } from './themes.js';
 import { loadFonts } from './fonts.js';
 import { applyPageCss, drawHighlights, applyFixation } from './page-style.js';
 import * as paper from './paper.js';
-import { findCover, findBackCover, showCover, coverIndex, backCoverIndex } from './cover.js';
+import { findCover, findBackCover, showCover, coverPlan } from './cover.js';
 
 window.__pager = true;
 const $ = (s) => document.querySelector(s);
@@ -58,8 +58,8 @@ async function ensureBook(id) {
   const bytes = await window.api.library.read(id);
   book = window.ePub(bytes);
   await book.ready;
-  coverAt = await coverIndex(book);
-  backAt = await backCoverIndex(book, coverAt);
+  // the same covers as the reader finds (the plain back cover needs no picture here)
+  { const plan = await coverPlan(book, { picture: false }); coverAt = plan.front; backAt = plan.back; }
   bookId = id;
 }
 

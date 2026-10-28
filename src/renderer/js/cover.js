@@ -140,10 +140,11 @@ export async function coverIndex(book) {
   return -1;
 }
 
-// The back cover: the last part of the book, a single picture that says it's
-// the back cover (marked so, or named so). Many books end on a single
-// picture that isn't one (a logo, an advert), so this is strict.
-export async function backCoverIndex(book, frontIndex = -1) {
+// The back cover: the last part of the book, a single picture with no text
+// that says it's the back cover (marked or named so) or is the same shape
+// as the front cover. (Many books end on a single picture that isn't one, a
+// logo or an advert, so it has to say so or match.)
+export async function backCoverIndex(book, frontIndex = -1, frontSrc = null) {
   const items = book.spine.spineItems || [];
   let i = items.length - 1;
   while (i > 0 && items[i]?.linear === false) i--;
@@ -151,10 +152,86 @@ export async function backCoverIndex(book, frontIndex = -1) {
   const got = await loadDoc(book, i);
   if (!got) return -1;
   const im = singleImage(got.doc);
+  const body = got.doc.body || got.doc.querySelector('body');
+  const bare = (body?.textContent || '').replace(/\s+/g, '').length <= 10;
   const said = !!got.doc.querySelector('[*|type~="backcover"]')
     || /back[-_ ]?cover|(^|[^a-z])back([^a-z]|$)/i.test(`${got.sec.href} ${im?.raw || ''}`);
   got.done();
-  return im && said ? i : -1;
+  if (!im) return -1;
+  if (said) return i;
+  if (!bare || !frontSrc) return -1;
+  const src = await imageUrl(book, i);
+  if (!src) return -1;
+  const [a, b] = await Promise.all([measure(frontSrc), measure(src)]);
+  const ra = a.h / a.w, rb = b.h / b.w;
+  return Math.abs(ra - rb) / ra < 0.08 ? i : -1;
+}
+
+// What a book has for covers: { front, frontSrc, back, backSrc, virtualBack }.
+// A book with a front cover and no back cover of its own gets a plain one
+// (virtualBack), placed just after its last part, so it closes at the end
+// the way it opened. Its picture is made here: a board in the front
+// cover's own color.
+export async function coverPlan(book, { picture = true } = {}) {
+  const front = await coverIndex(book);
+  let frontSrc = await imageUrl(book, front);
+  if (!frontSrc && front >= 0) { try { frontSrc = await book.coverUrl(); } catch { /* none */ } }
+  let back = await backCoverIndex(book, front, frontSrc);
+  let backSrc = await imageUrl(book, back);
+  let virtualBack = false;
+  if (back < 0 && front >= 0) {
+    virtualBack = true;
+    back = (book.spine.spineItems || []).length;
+    backSrc = picture ? await plainBoard(frontSrc) : null;
+  }
+  return { front, frontSrc, back, backSrc, virtualBack };
+}
+
+// A plain back cover: the front cover's shape, in the color around its edges.
+async function plainBoard(frontSrc) {
+  const { w, h } = frontSrc ? await measure(frontSrc) : { w: 2, h: 3 };
+  let color = [58, 54, 49];
+  if (frontSrc) {
+    try {
+      const im = new Image();
+      im.src = frontSrc;
+      await im.decode();
+      const c = document.createElement('canvas');
+      c.width = 40; c.height = 60;
+      const g = c.getContext('2d', { willReadFrequently: true });
+      g.drawImage(im, 0, 0, 40, 60);
+      const d = g.getImageData(0, 0, 40, 60).data;
+      let r = 0, gg = 0, b = 0, n = 0;
+      for (let y = 0; y < 60; y++) {
+        for (let x = 0; x < 40; x++) {
+          if (x > 2 && x < 37 && y > 2 && y < 57) continue; // the edges only
+          const k = (y * 40 + x) * 4;
+          r += d[k]; gg += d[k + 1]; b += d[k + 2]; n++;
+        }
+      }
+      color = [r / n, gg / n, b / n].map(Math.round);
+    } catch { /* the plain board */ }
+  }
+  const W = 600, H = Math.round((600 * h) / w);
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  g.fillStyle = `rgb(${color.join(',')})`;
+  g.fillRect(0, 0, W, H);
+  // a little grain, and light falling from the top, so it reads as board
+  const grad = g.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(255,255,255,.05)');
+  grad.addColorStop(1, 'rgba(0,0,0,.08)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, W, H);
+  const img = g.getImageData(0, 0, W, H);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = (Math.random() - 0.5) * 10;
+    img.data[i] += v; img.data[i + 1] += v; img.data[i + 2] += v;
+  }
+  g.putImageData(img, 0, 0);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  return blob ? URL.createObjectURL(blob) : null;
 }
 
 // A blob URL for the picture on part i of the book (for showing a cover
