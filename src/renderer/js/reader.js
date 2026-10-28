@@ -1,7 +1,7 @@
 // The reader: opens a book with epub.js, lays it out, styles its pages, and
 // tracks where you are. Page turning, annotations, stats and speech plug in
 // through the hooks below.
-import { findCover, showCover, coverIndex } from './cover.js';
+import { findCover, findBackCover, showCover, coverIndex, backCoverIndex, imageUrl } from './cover.js';
 import { $, setChildren, el, debounce, toast, countWords, clamp } from './ui.js';
 import { getSettings, onSettings, attachBook, detachBook } from './settings.js';
 import { findTheme, applyChromeTheme, isDark, mix, luminance } from './themes.js';
@@ -54,7 +54,11 @@ export async function openBook(meta, { at } = {}) {
   R.book = window.ePub(bytes);
   await R.book.ready;
   R.coverIndex = await coverIndex(R.book);
-  try { R.coverSrc = await R.book.coverUrl(); } catch { R.coverSrc = null; }
+  R.backIndex = await backCoverIndex(R.book, R.coverIndex);
+  // their pictures, for closing the book onto a cover not yet shown
+  R.coverSrc = await imageUrl(R.book, R.coverIndex);
+  if (!R.coverSrc && R.coverIndex >= 0) { try { R.coverSrc = await R.book.coverUrl(); } catch { /* none */ } }
+  R.backSrc = await imageUrl(R.book, R.backIndex);
   R.rtl = (R.book.package?.metadata?.direction || R.book.package?.spine?.direction) === 'rtl'
     || R.book.packaging?.metadata?.direction === 'rtl';
   R.cache = await window.api.bookCache.get(meta.id);
@@ -292,24 +296,41 @@ window.addEventListener('resize', () => {
 });
 
 // ---------- page content ----------
-// The cover page is drawn as the book's cover (see cover.js).
+// The cover pages are drawn as the book's covers (see cover.js).
+const coverOn = (contents) => findCover(contents) || findBackCover(contents, R.backIndex);
 function updateCover(contents = R.rendition?.getContents?.()[0]) {
-  const on = getSettings().flow === 'paginated' ? findCover(contents) : null;
+  const on = getSettings().flow === 'paginated' ? coverOn(contents) : null;
   showCover($('#stage'), on, R.cols).catch((e) => console.error(e));
 }
 
-// Is this turn onto or off the cover? (Those don't curl: a page-sized leaf
-// makes no sense for a closed book; they fade instead.)
-export function turnsCover(dir) {
+// Is this turn onto or off a cover? Returns { side: 'front' | 'back',
+// toCover } or null. (Those turns open or close the book rather than curl.)
+export function coverTurnAt(dir) {
   const loc = R.location;
-  if (!loc || R.coverIndex == null || R.coverIndex < 0) return false;
-  if (dir > 0) return loc.start.index === R.coverIndex;
-  return loc.start.index === R.coverIndex + 1 && (loc.start.displayed?.page ?? 1) <= 1;
+  if (!loc || getSettings().flow !== 'paginated') return null;
+  if (R.coverIndex >= 0) {
+    if (dir > 0 && loc.start.index === R.coverIndex) return { side: 'front', toCover: false };
+    if (dir < 0 && loc.start.index === R.coverIndex + 1 && (loc.start.displayed?.page ?? 1) <= 1) return { side: 'front', toCover: true };
+  }
+  if (R.backIndex >= 0) {
+    const e = loc.end || loc.start;
+    if (dir > 0 && e.index === R.backIndex - 1 && (e.displayed?.page ?? 0) >= (e.displayed?.total ?? 1)) return { side: 'back', toCover: true };
+    if (dir < 0 && loc.start.index === R.backIndex) return { side: 'back', toCover: false };
+  }
+  return null;
+}
+// Moving the book for such a turn: straight to the cover's own part, or to
+// the page next to it (a cover page can run to a second, empty page, which
+// must never be a stop of its own).
+export function coverGo({ side, toCover }) {
+  const at = (i) => R.rendition.display(R.book.spine.get(i).href);
+  if (side === 'front') return at(toCover ? R.coverIndex : R.coverIndex + 1);
+  return toCover ? at(R.backIndex) : R.rendition.prev();
 }
 
 function onContentReady(contents) {
   // shown as soon as the cover page arrives, not after it has been drawn as a page
-  if (findCover(contents)) updateCover(contents);
+  if (coverOn(contents)) updateCover(contents);
   styleContents(contents);
   attachContentListeners(contents);
   for (const fn of contentsHooks()) {
@@ -319,7 +340,13 @@ function onContentReady(contents) {
 
 function styleContents(contents) {
   const s = getSettings();
-  applyPageCss(contents, s, R.theme || findTheme(s), { blankFirst: blankFirst(contents.sectionIndex, s) });
+  const spread = s.flow === 'paginated' && R.cols === 2;
+  applyPageCss(contents, s, R.theme || findTheme(s), {
+    blankFirst: blankFirst(contents.sectionIndex, s),
+    // the last pages before a back cover end on a left-hand page
+    endOnLeft: spread && R.backIndex > 0 && contents.sectionIndex === R.backIndex - 1 ? (R.layout?.width || 0) / 2 : 0,
+    expand: () => { try { R.rendition?.manager?.views?.all?.().find((v) => v.contents === contents)?.expand(); R.rendition?.reportLocation?.(); } catch { /* gone */ } },
+  });
 }
 // the part right after the cover opens on a right-hand page in two-page view
 const blankFirst = (index, s = getSettings()) => s.flow === 'paginated' && R.cols === 2 && R.coverIndex >= 0 && index === R.coverIndex + 1;
@@ -544,7 +571,7 @@ export function updateFooter() {
     title: R.meta.title || '',
     time: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
     clock: new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
-    page: s.flow === 'paginated' && loc.start.index === R.coverIndex ? 'Cover' : s.flow === 'paginated' && d.total ? `Page ${d.page} of ${d.total} in chapter` : '',
+    page: s.flow === 'paginated' && loc.start.index === R.coverIndex ? 'Cover' : s.flow === 'paginated' && loc.start.index === R.backIndex ? 'Back cover' : s.flow === 'paginated' && d.total ? `Page ${d.page} of ${d.total} in chapter` : '',
     'chapter-left': tl ? `${fmtMin(tl.chapter)} left in chapter` : '',
     'book-left': tl ? `${fmtMin(tl.book)} left in book` : '',
     percent: pct != null ? `${Math.round(pct * 100)}%` : '',

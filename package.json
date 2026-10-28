@@ -107,7 +107,7 @@
         }
       ],
       "category": "public.app-category.books",
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "darkModeSupport": true
     },
     "dmg": {
@@ -129,7 +129,7 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,

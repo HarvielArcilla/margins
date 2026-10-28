@@ -5,7 +5,7 @@ import { applyChromeTheme, isDark } from './themes.js';
 import { loadFonts } from './fonts.js';
 import { applyPageCss, drawHighlights, applyFixation } from './page-style.js';
 import * as paper from './paper.js';
-import { findCover, showCover, coverIndex } from './cover.js';
+import { findCover, findBackCover, showCover, coverIndex, backCoverIndex } from './cover.js';
 
 window.__pager = true;
 const $ = (s) => document.querySelector(s);
@@ -14,10 +14,14 @@ const frame = () => new Promise((r) => requestAnimationFrame(r));
 let book = null, bookId = null, rendition = null, renditionKey = '';
 let spec = null; // the request being rendered (settings etc. for the hooks)
 
-let coverAt = -1;
+let coverAt = -1, backAt = -1;
 function dress(contents) {
-  const blankFirst = spec.s.flow === 'paginated' && spec.L.cols === 2 && coverAt >= 0 && contents.sectionIndex === coverAt + 1;
-  applyPageCss(contents, spec.s, spec.theme, { blankFirst });
+  const spread = spec.s.flow === 'paginated' && spec.L.cols === 2;
+  applyPageCss(contents, spec.s, spec.theme, {
+    blankFirst: spread && coverAt >= 0 && contents.sectionIndex === coverAt + 1,
+    endOnLeft: spread && backAt > 0 && contents.sectionIndex === backAt - 1 ? spec.L.width / 2 : 0,
+    expand: () => { try { rendition?.manager?.views?.all?.().find((v) => v.contents === contents)?.expand(); } catch { /* gone */ } },
+  });
   drawHighlights(contents, spec.items || [], spec.s, spec.theme);
   applyFixation(contents, spec.s);
 }
@@ -37,6 +41,10 @@ function applyLook() {
   paper.placeSpine(L, stage.left);
   // the desk shows around a cover
   if (s.deskColor) rv.style.setProperty('--desk', s.deskColor); else rv.style.removeProperty('--desk');
+  // and its corners are rounded like the page's (as reader.applyPageSize works it out)
+  const desk = (s.deskX ?? 0) > 0 || (s.deskY ?? 0) > 0;
+  rv.classList.toggle('has-desk', desk);
+  rv.style.setProperty('--page-radius', `${desk ? Math.max(0, Math.min(32, s.pageRadius || 0)) : 0}px`);
   Object.assign($('#stage').style, { left: `${stage.left}px`, top: `${stage.top}px`, width: `${stage.W}px`, height: `${stage.H}px`, bottom: 'auto', right: 'auto' });
   Object.assign($('#book').style, { position: 'absolute', left: `${L.padX}px`, top: `${L.padY}px`, width: `${L.width}px`, height: `${L.height}px` });
   document.body.dataset.flow = s.flow;
@@ -51,6 +59,7 @@ async function ensureBook(id) {
   book = window.ePub(bytes);
   await book.ready;
   coverAt = await coverIndex(book);
+  backAt = await backCoverIndex(book, coverAt);
   bookId = id;
 }
 
@@ -75,6 +84,8 @@ async function ensureRendition() {
 async function settle() {
   await document.fonts?.ready;
   for (const c of rendition.getContents()) await c.document.fonts?.ready;
+  // (and the page count evened out before a back cover)
+  for (const c of rendition.getContents()) await c.__parity;
   await frame(); await frame();
 }
 
@@ -110,7 +121,8 @@ async function render(req) {
     }
   }
   // the cover is drawn as a cover here too, as on screen
-  await showCover($('#stage'), spec.s.flow === 'paginated' ? findCover(rendition.getContents()[0]) : null, spec.L.cols);
+  const shown = rendition.getContents()[0];
+  await showCover($('#stage'), spec.s.flow === 'paginated' ? (findCover(shown) || findBackCover(shown, backAt)) : null, spec.L.cols);
   await frame();
   const loc = rendition.currentLocation();
   window.api.pager.done({ id: req.id, ok: true, cfi: loc?.start?.cfi || null, atEnd: !!loc?.atEnd, atStart: !!loc?.atStart });

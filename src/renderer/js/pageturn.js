@@ -3,7 +3,7 @@
 // auto-scroll — plus the page-turn animations.
 import { $ } from './ui.js';
 import { getSettings, setSettings } from './settings.js';
-import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents, onContents, turnsCover } from './reader.js';
+import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents, onContents, coverTurnAt, coverGo } from './reader.js';
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
@@ -26,9 +26,11 @@ export async function turn(dir, { source = 'user', at = null } = {}) {
     const s = getSettings();
     const go = () => (dir > 0 ? rNext() : rPrev());
     if (s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      await go();
+      const tc = coverTurnAt(dir);
+      await (tc ? coverGo(tc) : go());
     } else {
-      if (turnsCover(dir)) await coverTurn(dir, s.animationMs, go);
+      const tc = coverTurnAt(dir);
+      if (tc) await coverTurn(tc, s.animationMs, () => coverGo(tc));
       else await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir, at);
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
@@ -64,7 +66,7 @@ export function handlePointerDown(pt, ev, doc) {
   if (!side) return;
   ev.preventDefault(); // no text selection from the margin
   const dir = R.rtl ? -side : side;
-  if (turnsCover(dir)) return; // the cover opens with a click or key, not a drag
+  if (coverTurnAt(dir)) return; // covers open and close with a click or key, not a drag
   const toTop = (e) => {
     const f = e.view && e.view !== window ? e.view.frameElement?.getBoundingClientRect() : null;
     return f ? { x: f.left + e.clientX, y: f.top + e.clientY } : { x: e.clientX, y: e.clientY };

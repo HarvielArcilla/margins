@@ -834,8 +834,13 @@ body.focus-mode #turn-over { top: 0; bottom: 0; }
   background: linear-gradient(90deg, rgba(0,0,0,.28) 0, rgba(0,0,0,.08) 1.2%, rgba(255,255,255,.10) 2.4%, rgba(0,0,0,.06) 3.6%, transparent 7%); }
 /* a closed book lies on the desk even when pages fill the window */
 #reader-view:has(#stage.closed) { background: var(--desk, var(--desk-auto)); }
-/* the cover swinging open or shut (see coverTurn in turn-anim.js) */
+/* a cover swinging open or shut (see coverTurn in turn-anim.js) */
 .cover-leaf { position: fixed !important; z-index: 36; pointer-events: none; will-change: transform; }
-.cover-inside { background: var(--bg); border-radius: var(--page-radius, 0px) 0 0 var(--page-radius, 0px);
+.cover-inside { background: var(--bg); overflow: hidden; border-radius: var(--page-radius, 0px) 0 0 var(--page-radius, 0px);
   box-shadow: inset -14px 0 22px -14px rgba(0,0,0,.28), 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent); }
+.cover-inside.back { border-radius: 0 var(--page-radius, 0px) var(--page-radius, 0px) 0; box-shadow: inset 14px 0 22px -14px rgba(0,0,0,.28), 0 0 0 1px color-mix(in srgb, var(--fg) 6%, transparent); }
+.cover-inside-paper { position: absolute; inset: 0; background-repeat: repeat; background-position: 0 0; pointer-events: none; }
+/* the back cover lies the other way round: its hinge on the right */
+.cover-face.back { border-radius: var(--page-radius, 3px) 2px 2px var(--page-radius, 3px); }
+.cover-face.back::after { background: linear-gradient(270deg, rgba(0,0,0,.28) 0, rgba(0,0,0,.08) 1.2%, rgba(255,255,255,.10) 2.4%, rgba(0,0,0,.06) 3.6%, transparent 7%); }
 #reader-view.cover-turning { background: var(--desk, var(--desk-auto)) !important; }

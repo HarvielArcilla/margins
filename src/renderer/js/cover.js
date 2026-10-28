@@ -1,27 +1,24 @@
-// A book's cover, shown as a cover: the closed book lying on the desk, in
+// A book's covers, shown as covers: the closed book lying on the desk, in
 // the cover image's own proportions, rather than an image set inside a page
-// with margins around it. In two-page view it sits where a closed book
-// would, on the right of the spine.
+// with margins around it.
+// - The front cover: in two-page view it lies to the right of the spine,
+//   where a closed book would.
+// - The back cover (when the book has one): the book closed again at the
+//   end, lying face down, so to the left of the spine.
 //
 // Shared by the reader and the offscreen pager (which pictures pages for
-// page turns), so a turn to or from the cover shows exactly what's on screen.
+// page turns), so a turn to or from a cover shows exactly what's on screen.
 
-// Is this section the book's cover page? Returns its image, or null.
-// A cover page is the first part of the book (or one marked as the cover)
-// holding a single picture and next to no text.
-export function findCover(contents) {
-  const doc = contents?.document;
+// The single picture a cover page holds, or null: exactly one image and
+// next to no text.
+function singleImage(doc) {
   const body = doc?.body || doc?.querySelector?.('body');
   if (!body) return null;
-  const idx = contents.sectionIndex ?? 99;
-  const marked = !!doc.querySelector('[*|type~="cover"], [role="doc-cover"]');
-  const named = /(^|[^a-z])cover/i.test(contents.section?.href || doc.baseURI || '');
-  if (idx > 1 && !marked) return null;
-  if (idx === 1 && !marked && !named) return null;
   const imgs = [...doc.querySelectorAll('img')];
   const svgImgs = [...doc.querySelectorAll('svg image')];
   if (imgs.length + svgImgs.length !== 1) return null;
   const text = (body.textContent || '').replace(/\s+/g, '');
+  const marked = isMarked(doc);
   if (text.length > 80 && !marked) return null;
   let src = '';
   let alt = '';
@@ -32,7 +29,30 @@ export function findCover(contents) {
     const href = svgImgs[0].getAttribute('xlink:href') || svgImgs[0].getAttribute('href') || svgImgs[0].href?.baseVal;
     try { src = new URL(href, doc.baseURI).href; } catch { src = href; }
   }
-  return src ? { src, alt } : null;
+  return src ? { src, alt, raw: imgs[0]?.getAttribute('src') || svgImgs[0]?.getAttribute('xlink:href') || svgImgs[0]?.getAttribute('href') || '' } : null;
+}
+const isMarked = (doc) => !!doc.querySelector('[*|type~="cover"], [*|type~="backcover"], [role="doc-cover"]');
+
+// Is this section the book's front cover page? Returns its image, or null.
+// A cover page is the first part of the book (or one marked as the cover)
+// holding a single picture and next to no text.
+export function findCover(contents) {
+  const doc = contents?.document;
+  if (!doc) return null;
+  const idx = contents.sectionIndex ?? 99;
+  const marked = isMarked(doc);
+  const named = /(^|[^a-z])cover/i.test(contents.section?.href || doc.baseURI || '');
+  if (idx > 1 && !marked) return null;
+  if (idx === 1 && !marked && !named) return null;
+  const im = singleImage(doc);
+  return im ? { ...im, side: 'front' } : null;
+}
+
+// Is this section the back cover (as found by backCoverIndex)?
+export function findBackCover(contents, backIndex) {
+  if (backIndex == null || backIndex < 0 || contents?.sectionIndex !== backIndex) return null;
+  const im = singleImage(contents.document);
+  return im ? { ...im, side: 'back' } : null;
 }
 
 // The cover image's size, once it has loaded.
@@ -49,7 +69,7 @@ export function measure(src) {
   return p;
 }
 
-// Show the cover on the stage (or take it away, with cover = null).
+// Show a cover on the stage (or take it away, with cover = null).
 // cols: 1 or 2 pages across.
 export async function showCover(stage, cover, cols) {
   let face = stage.querySelector('.cover-face');
@@ -65,23 +85,25 @@ export async function showCover(stage, cover, cols) {
     face.append(document.createElement('img'));
     stage.append(face);
   }
+  face.classList.toggle('back', cover.side === 'back');
   const img = face.firstChild;
   if (img.getAttribute('src') !== cover.src) {
     img.src = cover.src;
-    img.alt = cover.alt || 'Cover';
+    img.alt = cover.alt || (cover.side === 'back' ? 'Back cover' : 'Cover');
     try { await img.decode(); } catch { /* shown when it arrives */ }
   }
-  const b = coverBox(stage, { w, h }, cols);
+  const b = coverBox(stage, { w, h }, cols, cover.side);
   Object.assign(face.style, { left: `${b.left}px`, top: `${b.top}px`, width: `${b.width}px`, height: `${b.height}px` });
   face.hidden = false;
   stage.classList.add('closed');
   stage.classList.toggle('closed-spread', cols === 2);
 }
 
-// Where the cover lies on the stage (stage coordinates): as large as the
-// page allows in the cover's own proportions; in two-page view it can't be
-// wider than one page, and lies against the spine.
-export function coverBox(stage, { w, h }, cols) {
+// Where a cover lies on the stage (stage coordinates): as large as the page
+// allows in the cover's own proportions; in two-page view it can't be wider
+// than one page, and lies against the spine (right of it for the front,
+// left of it for the back).
+export function coverBox(stage, { w, h }, cols, side = 'front') {
   // (measured the way the pager is sized, so both draw it to the pixel)
   const box = stage.getBoundingClientRect();
   const W = Math.round(box.width), H = Math.round(box.height);
@@ -90,23 +112,63 @@ export function coverBox(stage, { w, h }, cols) {
   let fh = H - 6, fw = ((H - 6) * w) / h;
   if (fw > room) { fw = room; fh = (room * h) / w; }
   fw = Math.round(fw); fh = Math.round(fh);
-  const left = cols === 2 ? Math.round(W / 2) : Math.round((W - fw) / 2);
+  const mid = Math.round(W / 2);
+  const left = cols === 2 ? (side === 'back' ? mid - fw : mid) : Math.round((W - fw) / 2);
   return { left, top: Math.round((H - fh) / 2), width: fw, height: fh };
 }
 
-// Which part of the book is its cover page, if any (index into the spine,
-// or -1), worked out from the book itself before it's shown, so page turns
-// to and from it can be chosen ahead of time.
+async function loadDoc(book, i) {
+  const sec = book.spine.get(i);
+  if (!sec) return null;
+  try {
+    const doc = await sec.load(book.load.bind(book));
+    return { doc, sec, done: () => sec.unload?.() };
+  } catch { return null; }
+}
+
+// Which part of the book is its front cover page, if any (index into the
+// spine, or -1), worked out from the book itself before it's shown, so page
+// turns to and from it can be chosen ahead of time.
 export async function coverIndex(book) {
   for (const i of [0, 1]) {
-    const sec = book.spine.get(i);
-    if (!sec) break;
-    try {
-      const doc = await sec.load(book.load.bind(book));
-      const hit = findCover({ document: doc, sectionIndex: i, section: sec });
-      sec.unload?.();
-      if (hit) return i;
-    } catch { /* unreadable: no cover */ }
+    const got = await loadDoc(book, i);
+    if (!got) break;
+    const hit = findCover({ document: got.doc, sectionIndex: i, section: got.sec });
+    got.done();
+    if (hit) return i;
   }
   return -1;
+}
+
+// The back cover: the last part of the book, a single picture that says it's
+// the back cover (marked so, or named so). Many books end on a single
+// picture that isn't one (a logo, an advert), so this is strict.
+export async function backCoverIndex(book, frontIndex = -1) {
+  const items = book.spine.spineItems || [];
+  let i = items.length - 1;
+  while (i > 0 && items[i]?.linear === false) i--;
+  if (i <= Math.max(0, frontIndex)) return -1;
+  const got = await loadDoc(book, i);
+  if (!got) return -1;
+  const im = singleImage(got.doc);
+  const said = !!got.doc.querySelector('[*|type~="backcover"]')
+    || /back[-_ ]?cover|(^|[^a-z])back([^a-z]|$)/i.test(`${got.sec.href} ${im?.raw || ''}`);
+  got.done();
+  return im && said ? i : -1;
+}
+
+// A blob URL for the picture on part i of the book (for showing a cover
+// before its part has been opened), or null.
+export async function imageUrl(book, i) {
+  if (i == null || i < 0) return null;
+  const got = await loadDoc(book, i);
+  if (!got) return null;
+  const im = singleImage(got.doc);
+  const href = got.sec.href;
+  got.done();
+  if (!im?.raw) return null;
+  try {
+    const rel = new URL(im.raw, `http://book/${href}`).pathname.slice(1);
+    return (await book.resources?.get(rel)) || null;
+  } catch { return null; }
 }

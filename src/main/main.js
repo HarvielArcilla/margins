@@ -8,6 +8,13 @@ const crypto = require('node:crypto');
 const { pathToFileURL } = require('node:url');
 const store = require('./store');
 
+// Shown as Margins everywhere, also when run from source: the menu bar and
+// Dock on macOS, the taskbar on Windows (which groups windows by this id, and
+// otherwise shows them as Electron's).
+app.setName('Margins');
+if (process.platform === 'win32') app.setAppUserModelId('io.github.harvielarcilla.margins');
+const APP_ICON = path.join(__dirname, '..', 'renderer', 'icon.png');
+
 // Graphics options are read before the app is ready because Chromium only
 // takes them at startup. They live outside the main store (which needs the
 // app to be ready) in a tiny JSON file.
@@ -96,6 +103,7 @@ function createWindow() {
     minHeight: 420,
     show: false,
     backgroundColor: '#fbf9f4',
+    icon: APP_ICON, // the window and taskbar icon on Windows and Linux
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     trafficLightPosition: { x: 14, y: 14 },
     titleBarOverlay: isMac ? false : { color: '#fbf9f4', symbolColor: '#6b665e', height: 40 },
@@ -478,6 +486,8 @@ if (!app.requestSingleInstanceLock()) {
   process.argv.slice(1).filter((a) => /\.epub$/i.test(a)).forEach((f) => pendingOpen.push(f));
 
   app.whenReady().then(() => {
+    // run from source, the Dock would show Electron's icon
+    if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(APP_ICON);
     store.init(app.getPath('userData'));
     session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => cb(['local-fonts', 'fullscreen', 'clipboard-sanitized-write'].includes(permission)));
     session.defaultSession.setPermissionCheckHandler((_wc, permission) => ['local-fonts', 'fullscreen', 'clipboard-sanitized-write'].includes(permission));

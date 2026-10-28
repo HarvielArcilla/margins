@@ -5,7 +5,7 @@
 import { buildContentCss } from './content-style.js';
 import { highlightColors, isDark, rgba, mix } from './themes.js';
 
-export function applyPageCss(contents, s, theme, { blankFirst = false } = {}) {
+export function applyPageCss(contents, s, theme, { blankFirst = false, endOnLeft = 0, expand = null } = {}) {
   const doc = contents.document;
   let tag = doc.getElementById('m-reader-style');
   if (!tag) { tag = doc.createElement('style'); tag.id = 'm-reader-style'; doc.head.append(tag); }
@@ -15,13 +15,66 @@ export function applyPageCss(contents, s, theme, { blankFirst = false } = {}) {
   // In two-page view the book opens like a real one: the first page after
   // the cover is a right-hand page, with the inside of the cover (blank)
   // facing it. An empty first column puts it there.
-  let blank = doc.getElementById('m-blank-first');
-  if (blankFirst && !blank) {
-    blank = doc.createElement('style');
-    blank.id = 'm-blank-first';
-    blank.textContent = 'body::before { content: ""; display: block; height: 1px; break-after: column; }';
-    doc.head.append(blank);
-  } else if (!blankFirst && blank) blank.remove();
+  const lead = blankFirst || (endOnLeft && contents.__lead);
+  setLead(doc, !!lead);
+  contents.__parity = endOnLeft ? evenOut(contents, endOnLeft, expand) : (contents.__lead = false, Promise.resolve());
+}
+
+// A blank first page for this part: an empty first column (a ::before, so
+// the book's own elements, and the positions saved against them, are
+// untouched) and, so the view still makes room for every page (it measures
+// the text from its first page to its last), a marker in a column of its
+// own after the text. That marker is added at the very end, after all of
+// the book's elements, so it moves none of them either.
+function setLead(doc, on) {
+  const style = doc.getElementById('m-blank-first');
+  const tail = doc.getElementById('m-blank-tail');
+  if (on) {
+    if (!style) {
+      const t = doc.createElement('style');
+      t.id = 'm-blank-first';
+      t.textContent = 'body::before { content: ""; display: block; height: 1px; break-after: column; }';
+      doc.head.append(t);
+    }
+    if (!tail && doc.body) {
+      const d = doc.createElement('div');
+      d.id = 'm-blank-tail';
+      d.setAttribute('aria-hidden', 'true');
+      d.style.cssText = 'break-before: column; height: 1px; margin: 0; padding: 0;';
+      doc.body.append(d);
+    }
+  } else {
+    style?.remove();
+    tail?.remove();
+  }
+}
+
+const twoFrames = (win) => new Promise((r) => win.requestAnimationFrame(() => win.requestAnimationFrame(r)));
+
+// Before the back cover, in two-page view, the last page is a left-hand
+// page facing the inside of the back cover (blank). Pages are shown in
+// pairs, so when the text would end on a right-hand page this part starts
+// on a right-hand page instead (a blank page before it, as printed books
+// often begin a chapter), which moves its end onto a left-hand page.
+// pageW: the width of one page.
+// expand: tells the book's view the page count changed.
+async function evenOut(contents, pageW, expand) {
+  const doc = contents.document;
+  const win = doc.defaultView;
+  try {
+    await doc.fonts?.ready;
+    await twoFrames(win);
+    const had = !!doc.getElementById('m-blank-first');
+    const n = Math.round(contents.textWidth() / pageW) - (had ? 1 : 0);
+    const want = n % 2 === 0; // would end on a right-hand page
+    contents.__lead = want;
+    if (want !== had) {
+      setLead(doc, want);
+      await twoFrames(win);
+      expand?.();
+      await twoFrames(win);
+    }
+  } catch { /* the page went away */ }
 }
 
 // A book that only asks for "serif" (or names Times, the usual stand-in)
