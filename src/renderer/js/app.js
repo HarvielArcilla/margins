@@ -84,7 +84,17 @@ function wireTopbar() {
     $('#scrub-fill').style.width = `${p * 100}%`;
     $('#scrub-tip').textContent = `${Math.round(p * 100)}%`;
   });
-  scrub.addEventListener('change', () => reader.goToPercent(+scrub.value / 1000));
+  // Once let go, the bar hands the keyboard back to the book: otherwise it
+  // keeps focus and the arrow keys nudge it (a jump of a fraction of a
+  // percent, each one) instead of turning the page.
+  scrub.addEventListener('change', () => { reader.goToPercent(+scrub.value / 1000); scrub.blur(); });
+  scrub.addEventListener('keydown', (e) => {
+    if (!/^(Arrow(Left|Right|Up|Down)|Page(Up|Down)|Home|End| )$/.test(e.key)) return;
+    e.preventDefault();
+    scrub.blur();
+    const { key, code, shiftKey, ctrlKey, metaKey, altKey } = e;
+    window.dispatchEvent(new KeyboardEvent('keydown', { key, code, shiftKey, ctrlKey, metaKey, altKey }));
+  });
   $('#stage').addEventListener('wheel', (e) => turner.handleWheel(e), { passive: false });
   $('#stage').addEventListener('click', (e) => { if (e.target.closest('#viewer iframe')) return; turner.handleClick({ x: e.clientX, y: e.clientY }); });
   $('#stage').addEventListener('mousedown', (e) => { if (e.target.closest('#viewer iframe')) return; turner.handlePointerDown({ x: e.clientX, y: e.clientY }, e, document); });
