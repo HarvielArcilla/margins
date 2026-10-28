@@ -424,7 +424,6 @@ export async function animate(kind, sign, ms, go, dir = sign, at = null) {
   if ((dir > 0 && R.location?.atEnd) || (dir < 0 && R.location?.atStart)) return go();
   const which = dir > 0 ? 'next' : 'prev';
   dbg('turn', kind, which);
-  motion = true;
   return animation(async () => {
     const cfi = here();
     const s = await currentPicture();
@@ -718,6 +717,7 @@ function whenArrives(ctx, use) {
 
 // Without any pictures: move the live book itself out, turn, and in again.
 async function liveTurn(kind, sign, ms, go) {
+  motion = true;
   const viewer = $('#viewer');
   const half = Math.max(140, ms * 0.7);
   const t = (x) => ({ transform: x });
@@ -856,6 +856,7 @@ async function leafTurn(kind, sign, ms, go, s, ctx) {
   }
   const duration = Math.min(1400, Math.max(420, ms * 2.2));
   const ease = rigid ? flipEase : curlEase;
+  motion = true; // (only now: waiting for pictures, nothing has moved yet)
   await run(duration, (x) => { const k = ease(x); frame(at(k), k); }, true);
   ctx.done = true;
   motion = false;
@@ -1073,6 +1074,7 @@ async function sheetTurn(kind, sign, ms, go, s, ctx) {
     $('#stage').append(edge);
     anims.push(edge.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${s.W}px)` }], { duration: dur, easing: ease, fill: 'forwards' }));
   }
+  motion = true;
   const watch = setInterval(() => { if (hurry) anims.forEach((a) => a.finish()); }, 16);
   await Promise.all(anims.map((a) => a.finished.catch(() => {})));
   clearInterval(watch);
