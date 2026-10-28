@@ -199,9 +199,9 @@ async function toBitmap(raw, W, H) {
 // only usable when nothing is floating over the page.
 let captureFailures = 0;
 async function capture() {
-  // with rounded page corners a capture would include the desk in the
-  // corners; the page renderer draws the page square, as a turning leaf needs
-  if (captureFailures >= 2 || window.__noCapture || overlayCovering() || R.pageRadius > 0) return null;
+  // (with rounded page corners the capture has a little desk in each
+  // corner; everything that draws a picture rounds those corners off again)
+  if (captureFailures >= 2 || window.__noCapture || overlayCovering()) return null;
   const r = stageRect();
   if (r.W < 10 || r.H < 10) return null;
   let raw;
@@ -225,6 +225,7 @@ function pagerSpec(which, cfi) {
     win: { W: window.innerWidth, H: window.innerHeight },
     dpr: window.devicePixelRatio || 1,
     items: allAnnotations(),
+    gen: R.jumpGen || 0,
   };
 }
 
@@ -234,6 +235,7 @@ async function renderWithPager(which, cfi) {
   const spec = pagerSpec(which, cfi);
   let raw;
   try { raw = await window.api.pager.render(spec); } catch (e) { raw = { ok: false, error: String(e) }; }
+  if (raw?.stale) return null; // the reader has jumped elsewhere since
   if (!raw?.ok) {
     if (raw?.error) console.warn('pager:', raw.error);
     pictureStatus.pager = `failed: ${raw?.error || 'no reply'}`;
@@ -291,8 +293,10 @@ async function currentPicture() {
 // then one further each way, so turning steadily never waits for a render.
 let prepTimer = 0;
 let preparing = false;
-export function schedulePrepare(delay = 160) {
+let hurryPrep = false;
+export function schedulePrepare(delay = 160, { soon = false } = {}) {
   clearTimeout(prepTimer);
+  if (soon) hurryPrep = true;
   prepTimer = setTimeout(prepare, delay);
 }
 
@@ -302,7 +306,8 @@ async function prepare() {
   if (preparing || isAnimating()) { schedulePrepare(250); return; }
   preparing = true;
   try {
-    await idle(300);
+    // after a jump the next turn is likely soon: no waiting for a quiet moment
+    if (hurryPrep) hurryPrep = false; else await idle(300);
     const cfi = here(), l0 = look();
     const stale = () => !R.open || here() !== cfi || look() !== l0;
     if (!cfi || isAnimating()) { schedulePrepare(250); return; }
@@ -422,7 +427,14 @@ export async function animate(kind, sign, ms, go, dir = sign, at = null) {
     // the arriving page: in memory already, or on its way (and swapped in
     // the moment it arrives)
     const ctx = { which, cfi, n: knownNeighbour(cfi, which), coming: null };
-    if (!ctx.n) ctx.coming = neighbour(cfi, which);
+    if (!ctx.n) {
+      ctx.coming = neighbour(cfi, which);
+      // Not ready (just after a jump, say): worth a short wait, rather than
+      // starting the turn without the page underneath and swapping it in
+      // halfway through.
+      const got = await Promise.race([ctx.coming, new Promise((r) => setTimeout(() => r(null), 450))]);
+      if (got) ctx.n = got;
+    }
     dbg('arriving known', !!ctx.n, cfi, look());
     if (LEAF_KINDS.has(kind) && webglAvailable()) await leafTurn(kind, sign, ms, go, s, ctx);
     else await sheetTurn(LEAF_KINDS.has(kind) ? 'slide' : kind, sign, ms, go, s, ctx);

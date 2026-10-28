@@ -321,6 +321,16 @@ export function coverTurnAt(dir) {
   }
   return null;
 }
+// Nothing lies beyond the covers: no turning back from the front cover, or
+// on from the back one.
+export function pastCover(dir) {
+  const loc = R.location;
+  if (!loc || getSettings().flow !== 'paginated') return false;
+  if (dir < 0 && R.coverIndex >= 0 && loc.start.index <= R.coverIndex) return true;
+  if (dir > 0 && (R.atBack || (R.backIndex >= 0 && !R.virtualBack && loc.start.index >= R.backIndex))) return true;
+  return false;
+}
+
 // Moving the book for such a turn: straight to the cover's own part, or to
 // the page next to it (a cover page can run to a second, empty page, which
 // must never be a stop of its own).
@@ -492,7 +502,13 @@ function onRelocated(location) {
   if (!R.relayouting && !cfiOnPage(R.anchor, location)) R.anchor = location.start.cfi;
   updateFooter();
   saveProgress();
-  schedulePrepare();
+  // A move that isn't a page turn (contents, search, the scrubber, a link)
+  // is a jump: pages being got ready for the old place are dropped, and the
+  // pages either side of the new one are got ready straight away.
+  if (!R.turning && performance.now() - (R.turnedAt || 0) > 500 && !R.relayouting && prev && prev.start.cfi !== location.start.cfi) {
+    R.jumpGen = (R.jumpGen || 0) + 1;
+    schedulePrepare(30, { soon: true });
+  } else schedulePrepare();
   sidebar.locationChanged();
   annotations.locationChanged();
   if (prev && prev.start.cfi !== location.start.cfi) stats.pageTurn(location);

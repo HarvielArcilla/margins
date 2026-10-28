@@ -284,8 +284,13 @@ function closePagerSoon() {
 
 // One page at a time: each render is captured before the next one starts.
 let pagerQueue = Promise.resolve();
+// Requests carry the reader's "jump" count: once the reader has jumped
+// somewhere else (contents, search, the scrubber), pages still waiting to be
+// rendered for where it was are dropped, so the new place isn't kept waiting.
+let pagerGen = 0;
 function pagerRender(spec) {
-  const run = pagerQueue.then(() => pagerRenderNow(spec));
+  pagerGen = Math.max(pagerGen, spec.gen || 0);
+  const run = pagerQueue.then(() => ((spec.gen || 0) < pagerGen ? { ok: false, stale: true, error: 'stale' } : pagerRenderNow(spec)));
   pagerQueue = run.catch(() => {});
   return run;
 }

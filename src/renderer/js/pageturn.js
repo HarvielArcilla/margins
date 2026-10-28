@@ -3,7 +3,7 @@
 // auto-scroll — plus the page-turn animations.
 import { $ } from './ui.js';
 import { getSettings, setSettings } from './settings.js';
-import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents, onContents, coverTurnAt, coverGo } from './reader.js';
+import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents, onContents, coverTurnAt, coverGo, pastCover } from './reader.js';
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
@@ -16,28 +16,38 @@ let queued = 0;
 let dragging = false;
 
 // dir: +1 forward in reading order, -1 back.
+// Flipping quickly (turns asked for faster than they animate, or queued
+// while one runs) skips the animations until the reader slows down.
+let lastAsk = 0;
 export async function turn(dir, { source = 'user', at = null } = {}) {
   if (!R.rendition) return;
   if (source === 'user') { stats.activity(); resetAutoTurn(); if (getSettings().autoPauseOnInteract && autoScroll.on) stopAuto(); }
   if (dragging) return;
+  if (pastCover(dir)) return;
+  const s = getSettings();
+  const now = performance.now();
+  const rapid = source === 'queue' || (source === 'user' && now - lastAsk < Math.max(220, (s.animationMs || 600) * 0.75));
+  if (source === 'user') lastAsk = now;
   if (busy) { queued = Math.max(-2, Math.min(2, queued + dir)); hurryUp(); return; }
   busy = true;
+  R.turning = true;
   try {
-    const s = getSettings();
     const go = () => (dir > 0 ? rNext() : rPrev());
-    if (s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      const tc = coverTurnAt(dir);
+    const tc = coverTurnAt(dir);
+    if (rapid || s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
       await (tc ? coverGo(tc) : go());
+    } else if (tc) {
+      await coverTurn(tc, s.animationMs, () => coverGo(tc));
     } else {
-      const tc = coverTurnAt(dir);
-      if (tc) await coverTurn(tc, s.animationMs, () => coverGo(tc));
-      else await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir, at);
+      await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir, at);
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
     focus.pageTurned();
     if (source === 'user' && tts.speaking()) tts.restart();
   } finally {
     busy = false;
+    R.turning = false;
+    R.turnedAt = performance.now();
   }
   if (queued) { const q = Math.sign(queued); queued -= q; turn(q, { source: 'queue' }); }
 }
@@ -66,7 +76,8 @@ export function handlePointerDown(pt, ev, doc) {
   if (!side) return;
   ev.preventDefault(); // no text selection from the margin
   const dir = R.rtl ? -side : side;
-  if (coverTurnAt(dir)) return; // covers open and close with a click or key, not a drag
+  // covers open and close with a click or key, not a drag; nothing lies past them
+  if (coverTurnAt(dir) || pastCover(dir) || $('#stage').classList.contains('closed')) return;
   const toTop = (e) => {
     const f = e.view && e.view !== window ? e.view.frameElement?.getBoundingClientRect() : null;
     return f ? { x: f.left + e.clientX, y: f.top + e.clientY } : { x: e.clientX, y: e.clientY };
@@ -88,12 +99,13 @@ export function handlePointerDown(pt, ev, doc) {
     if ((pt.x - latest.x) * side > 6) {
       starting = true;
       dragging = true;
+      R.turning = true;
       document.body.append(shield); // only once it is really a drag, so clicks still reach the page
       busy = true;
       stats.activity();
       startDrag({ sign: side, dir, x: pt.x, y: pt.y, go: () => (dir > 0 ? rNext() : rPrev()), undo: () => (dir > 0 ? rPrev() : rNext()) })
         .then((c) => {
-          if (!c) { dragging = false; busy = false; return; }
+          if (!c) { dragging = false; busy = false; R.turning = false; return; }
           ctrl = c;
           ctrl.move(latest.x, latest.y);
           if (released) finish();
@@ -103,6 +115,8 @@ export function handlePointerDown(pt, ev, doc) {
   const finish = async () => {
     const turned = await ctrl.release();
     dragging = false;
+    R.turning = false;
+    R.turnedAt = performance.now();
     busy = false;
     if (turned) { focus.pageTurned(); if (tts.speaking()) tts.restart(); }
   };
