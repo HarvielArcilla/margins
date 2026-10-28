@@ -59,6 +59,9 @@ export async function turn(dir, { source = 'user', at = null, repeat = false } =
   if (repeat && asked) { flipping = true; stillFlipping(); }
   // queued while flipping, a held key, or flipping still: no animation
   const rapid = source === 'queue' || repeat || (asked && flipping);
+  // a turn that was waiting behind another goes at about twice the speed:
+  // the reader is already on the way
+  const ms = source === 'queued' ? (s.animationMs || 600) * 0.5 : s.animationMs;
   busy = true;
   R.turning = true;
   try {
@@ -67,9 +70,9 @@ export async function turn(dir, { source = 'user', at = null, repeat = false } =
     if (rapid || s.flow !== 'paginated' || s.pageAnimation === 'none' || matchMedia('(prefers-reduced-motion: reduce)').matches) {
       await (tc ? coverGo(tc) : go());
     } else if (tc) {
-      await coverTurn(tc, s.animationMs, () => coverGo(tc));
+      await coverTurn(tc, ms, () => coverGo(tc));
     } else {
-      await animate(s.pageAnimation, visual(dir), s.animationMs, go, dir, at);
+      await animate(s.pageAnimation, visual(dir), ms, go, dir, at);
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
     focus.pageTurned();
