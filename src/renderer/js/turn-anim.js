@@ -97,6 +97,16 @@ function clockAt(now) {
   if (c.rushAt != null) return Math.min(1, c.rushFrom + (1 - c.rushFrom) * ((now - c.rushAt) / c.rushMs));
   return Math.min(1, (now - c.start) / c.dur);
 }
+// How long the turn on screen would still take at its own pace (ms).
+export function remainingMs() {
+  if (!motion) return 0;
+  const now = performance.now();
+  if (clock) return clock.rushAt != null ? Math.max(0, clock.rushMs - (now - clock.rushAt)) : Math.max(0, clock.dur - (now - clock.start));
+  const a = liveAnims?.[0];
+  if (a) return Math.max(0, (a.effect?.getTiming?.().duration || 0) - (a.currentTime || 0)) / (a.playbackRate || 1);
+  if (rig) return Math.max(0, rigDur - (now - rigStart));
+  return 0;
+}
 export function rush(ms = 120) {
   if (!motion) return;
   if (clock && clock.rushAt == null) {
@@ -457,12 +467,14 @@ function onPage(p) {
 // sign: +1 for a turn that moves visually leftward (forward in left-to-right
 // books), -1 for the reverse. dir: +1 forward in reading order, -1 back.
 let warned = false;
-// quick: a turn that was waiting behind another goes at the pace that one
-// was hurried through at.
-let quickTurn = false;
+// pace: how long a turn takes, from 0 (quick, the pace a hurried turn goes
+// at) to 1 (its own length); a turn that waited behind another goes
+// somewhere between, depending on when it was asked for.
+let pace = 1;
 const QUICK_LEAF = 220, QUICK_SHEET = 170, QUICK_COVER = 300;
-export async function animate(kind, sign, ms, go, dir = sign, at = null, { quick = false } = {}) {
-  quickTurn = quick;
+const paced = (quick, own) => quick + (Math.max(quick, own) - quick) * pace;
+export async function animate(kind, sign, ms, go, dir = sign, at = null, { pace: p = 1 } = {}) {
+  pace = Math.max(0, Math.min(1, p));
   hurry = false;
   clickedAt = at;
   if (kind === 'none') return go();
@@ -577,11 +589,12 @@ function quarter(el, from, to, dur, easing) {
 const RISE = 'cubic-bezier(.45,0,.9,.6)';
 const LAND = 'cubic-bezier(.1,.4,.55,1)';
 
-export async function coverTurn({ side, toCover }, ms, go, { quick = false } = {}) {
+export async function coverTurn({ side, toCover }, ms, go, { pace: p = 1 } = {}) {
+  pace = Math.max(0, Math.min(1, p));
   hurry = false;
   const stage = $('#stage');
   const rv = $('#reader-view');
-  const dur = quick ? QUICK_COVER : Math.max(520, ms * 1.4);
+  const dur = paced(QUICK_COVER, Math.max(520, ms * 1.4));
   const spread = R.cols === 2;
   const m = side === 'back' ? -1 : 1; // the back cover turns the other way
   const radius = parseFloat(getComputedStyle(rv).getPropertyValue('--page-radius')) || 0;
@@ -902,7 +915,7 @@ async function leafTurn(kind, sign, ms, go, s, ctx) {
       if (setup.landsOnPage && t < 0.2) { setup.back = p.bitmap; e.setBack(p.bitmap); }
     });
   }
-  const duration = quickTurn ? QUICK_LEAF : Math.min(1400, Math.max(420, ms * 2.2));
+  const duration = paced(QUICK_LEAF, Math.min(1400, Math.max(420, ms * 2.2)));
   const ease = rigid ? flipEase : curlEase;
   motion = true; // (only now: waiting for pictures, nothing has moved yet)
   await run(duration, (x) => { const k = ease(x); frame(at(k), k); }, true, ease);
@@ -1071,7 +1084,7 @@ async function sheetTurn(kind, sign, ms, go, s, ctx) {
   const n = arrivingNow(ctx);
   let incoming = n ? showUnder(n) : $('#viewer');
   if (!n) await settled();
-  const d = quickTurn ? QUICK_SHEET : Math.max(180, ms * 1.25);
+  const d = paced(QUICK_SHEET, Math.max(180, ms * 1.25));
   const ease = 'cubic-bezier(.25,.8,.25,1)';
   const plans = {
     fade: { out: [{ opacity: 1 }, { opacity: 0 }] },
