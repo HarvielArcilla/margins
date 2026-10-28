@@ -7,28 +7,34 @@ import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
-import { animate, coverTurn, hurryUp, startDrag, ANIMATIONS } from './turn-anim.js';
+import { animate, coverTurn, hurryUp, inMotion, startDrag, ANIMATIONS } from './turn-anim.js';
 
 export { ANIMATIONS };
 
 let busy = false;
-let queued = 0;
+// turns asked for while one is busy: { dir, instant }
+const queued = [];
 let dragging = false;
 
 // dir: +1 forward in reading order, -1 back.
-// Flipping quickly (turns asked for faster than they animate, or queued
-// while one runs) skips the animations until the reader slows down.
-let lastAsk = 0;
+// A turn asked for while one is still moving stops that one where it is and
+// goes on at once, without an animation; one asked for after it has
+// finished animates as usual, however soon. Every press is one page.
 export async function turn(dir, { source = 'user', at = null } = {}) {
   if (!R.rendition) return;
   if (source === 'user') { stats.activity(); resetAutoTurn(); if (getSettings().autoPauseOnInteract && autoScroll.on) stopAuto(); }
   if (dragging) return;
   if (pastCover(dir)) return;
   const s = getSettings();
-  const now = performance.now();
-  const rapid = source === 'queue' || (source === 'user' && now - lastAsk < Math.max(220, (s.animationMs || 600) * 0.75));
-  if (source === 'user') lastAsk = now;
-  if (busy) { queued = Math.max(-2, Math.min(2, queued + dir)); hurryUp(); return; }
+  const rapid = source === 'queue';
+  if (busy) {
+    // still moving: stop it, and this one goes at once; moving no more (the
+    // turn is just tidying up): this one animates as usual
+    const instant = inMotion() || queued.some((q) => q.instant);
+    if (instant) hurryUp();
+    if (queued.length < 8) queued.push({ dir, instant });
+    return;
+  }
   busy = true;
   R.turning = true;
   try {
@@ -49,7 +55,8 @@ export async function turn(dir, { source = 'user', at = null } = {}) {
     R.turning = false;
     R.turnedAt = performance.now();
   }
-  if (queued) { const q = Math.sign(queued); queued -= q; turn(q, { source: 'queue' }); }
+  const q = queued.shift();
+  if (q) turn(q.dir, { source: q.instant ? 'queue' : 'queued' });
 }
 
 // Visual direction: in right-to-left books the next page is on the left.
