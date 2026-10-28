@@ -7,7 +7,7 @@ import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
-import { animate, coverTurn, hurryUp, inMotion, turnProgress, remainingMs, rush, startDrag, ANIMATIONS } from './turn-anim.js';
+import { animate, coverTurn, hurryUp, inMotion, turnProgress, remainingMs, rush, nextWaiting, startDrag, ANIMATIONS } from './turn-anim.js';
 
 export { ANIMATIONS };
 
@@ -19,10 +19,10 @@ let dragging = false;
 // dir: +1 forward in reading order, -1 back.
 // Every click or press is one page. Only the motion adapts, smoothly, by how
 // far the page on screen has moved when the next turn is asked for:
-// - the earlier, the more the page on screen hurries through the rest of
-//   its movement, and the quicker the next turn goes;
-// - the later, the more it finishes at its own pace and the closer the next
-//   turn is to an ordinary one (asked for once nothing moves: ordinary);
+// - the page on screen hurries through the rest of its movement, and the
+//   next turn follows the moment it lands: quick if asked for early on,
+//   longer the later it was asked for, an ordinary turn by the end (or
+//   once nothing moves);
 // - a third one while turns are still stacked up means flipping: the turn
 //   on screen ends at once and turns go instantly, until there's a short
 //   pause; then they animate again.
@@ -55,13 +55,13 @@ export async function turn(dir, { source = 'user', at = null, repeat = false, pa
       return;
     }
     const p = inMotion() ? turnProgress() : 1;
-    // the page on screen: hurried all the way early on, left to finish at
-    // its own pace by about three quarters of the way
-    const left = remainingMs();
-    const finishIn = HURRY_MS + (left - HURRY_MS) * smooth(0.1, 0.75, p);
-    if (left > 0 && finishIn < left - 15) rush(finishIn);
-    // the next turn: quick early on, an ordinary one by the end
+    // the page on screen always hurries through what's left of its
+    // movement: the reader has already moved on
+    if (remainingMs() > HURRY_MS + 15) rush(HURRY_MS);
+    // the next turn: quick early on, an ordinary one by the end; it starts
+    // the moment this one lands
     queued.push({ dir, instant: false, pace: smooth(0.3, 0.95, p) });
+    nextWaiting(true);
     return;
   }
   if (repeat && asked) { flipping = true; stillFlipping(); }
@@ -79,7 +79,7 @@ export async function turn(dir, { source = 'user', at = null, repeat = false, pa
     } else if (tc) {
       await coverTurn(tc, ms, () => coverGo(tc), { pace });
     } else {
-      await animate(s.pageAnimation, visual(dir), ms, go, dir, at, { pace });
+      await animate(s.pageAnimation, visual(dir), ms, go, dir, at, { pace, chained: source === 'queued' });
     }
     if (!$('#reader-view').classList.contains('show-chrome')) showChrome(false);
     focus.pageTurned();
@@ -88,6 +88,7 @@ export async function turn(dir, { source = 'user', at = null, repeat = false, pa
     busy = false;
     R.turning = false;
     R.turnedAt = performance.now();
+    nextWaiting(false);
   }
   const q = queued.shift();
   if (q) turn(q.dir, { source: q.instant ? 'queue' : 'queued', pace: q.pace ?? 1 });

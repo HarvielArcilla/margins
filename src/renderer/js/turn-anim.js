@@ -77,6 +77,10 @@ let hurry = false;
 // a moment, waiting for the book underneath to be ready to show.)
 let motion = false;
 export const inMotion = () => motion;
+// Another turn is waiting to go: the one finishing hands over at once (no
+// quiet moment to settle, no fading out).
+let handover = false;
+export function nextWaiting(on = true) { handover = on; }
 // How far the moving page has got (0..1), and hurrying the rest of it
 // through in `ms` rather than stopping it.
 let clock = null;          // the frame loop's: { start, dur, rushAt, rushFrom, rushMs }
@@ -450,7 +454,7 @@ async function liveReady(cfi) {
   }
   await document.fonts?.ready;
   for (const c of liveContents()) { try { await c.document?.fonts?.ready; } catch { /* gone */ } }
-  if (!hurry) await Promise.race([idle(160), new Promise((r) => setTimeout(r, 160))]);
+  if (!hurry && !handover) await Promise.race([idle(160), new Promise((r) => setTimeout(r, 160))]);
   await nextPaint();
   await nextFrame();
 }
@@ -473,8 +477,10 @@ let warned = false;
 let pace = 1;
 const QUICK_LEAF = 220, QUICK_SHEET = 170, QUICK_COVER = 300;
 const paced = (quick, own) => quick + (Math.max(quick, own) - quick) * pace;
-export async function animate(kind, sign, ms, go, dir = sign, at = null, { pace: p = 1 } = {}) {
+export async function animate(kind, sign, ms, go, dir = sign, at = null, { pace: p = 1, chained = false } = {}) {
   pace = Math.max(0, Math.min(1, p));
+  // (a turn following straight on from another doesn't hold up for its picture)
+  const waitFor = chained ? 90 : 450;
   hurry = false;
   clickedAt = at;
   if (kind === 'none') return go();
@@ -501,7 +507,7 @@ export async function animate(kind, sign, ms, go, dir = sign, at = null, { pace:
       // Not ready (just after a jump, say): worth a short wait, rather than
       // starting the turn without the page underneath and swapping it in
       // halfway through.
-      const got = await Promise.race([ctx.coming, new Promise((r) => setTimeout(() => r(null), 450))]);
+      const got = await Promise.race([ctx.coming, new Promise((r) => setTimeout(() => r(null), waitFor))]);
       if (got) ctx.n = got;
     }
     dbg('arriving known', !!ctx.n, cfi, look());
@@ -931,7 +937,7 @@ async function finish(e, { leaf = !!e, exact = false, cfi = null } = {}) {
   // a landed leaf covers the old page it lies on
   if (leaf) hideSnap();
   const els = [e?.canvas, e?.shadowCanvas, snapEl, underEl].filter((x) => x && !x.hidden);
-  if (!exact && !hurry) await Promise.all(els.map((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 90, easing: 'linear', fill: 'forwards' }).finished.catch(() => {})));
+  if (!exact && !hurry && !handover) await Promise.all(els.map((el) => el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 90, easing: 'linear', fill: 'forwards' }).finished.catch(() => {})));
   e?.end();
   hideSnap();
   hideUnder();
