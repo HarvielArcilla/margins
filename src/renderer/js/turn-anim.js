@@ -490,12 +490,12 @@ const paced = (quick, own) => {
 // turn into the next. That speed comes from how far the page on screen has
 // moved: a press early on means hurry (close to the quick pace), and the
 // later the press the closer to the ordinary pace, rising steeply at first
-// and levelling off, so late presses all feel much the same. Returns the
+// and levelling off (gently), so late presses feel much alike. Returns the
 // next turn's pace (0..1).
 export function chainNext() {
   if (!motion || !ownFull) return 1;
   const p = Math.max(0, Math.min(1, turnProgress()));
-  const pc = 1 - (1 - p) ** 2;                               // the response curve
+  const pc = 1 - (1 - p) ** 1.5;                             // the response curve
   const nextLength = ownQuick * (ownFull / ownQuick) ** pc;  // the next turn's length
   // what's left of this one, at that same speed
   const finishIn = Math.max(60, (1 - p) * nextLength);
