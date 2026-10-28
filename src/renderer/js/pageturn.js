@@ -29,7 +29,7 @@ let dragging = false;
 //   pause; then they animate again.
 // Holding a key down (the key repeating) is flipping from the first repeat.
 const LATE = 0.6;          // how far through a turn it no longer needs hurrying
-const DONE = 0.9;          // ...and after which it's taken as finished
+const DONE = 0.75;         // ...and after which it's taken as finished (the last quarter)
 const FLIP_PAUSE = 350;    // ms without a turn asked for that ends flipping
 let flipping = false;
 let flipTimer = 0;
