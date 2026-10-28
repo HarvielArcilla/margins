@@ -476,7 +476,32 @@ let warned = false;
 // somewhere between, depending on when it was asked for.
 let pace = 1;
 const QUICK_LEAF = 220, QUICK_SHEET = 170, QUICK_COVER = 300;
-const paced = (quick, own) => quick + (Math.max(quick, own) - quick) * pace;
+// (on a log scale between the two: equal steps in pace are equal ratios of
+// length, as quick and slow are felt)
+let ownFull = 0, ownQuick = 0; // the turn on screen's ordinary and quick lengths
+const paced = (quick, own) => {
+  own = Math.max(quick, own);
+  ownFull = own; ownQuick = quick;
+  return quick * (own / quick) ** pace;
+};
+
+// Another turn asked for while one is moving: the one on screen and the
+// next go at one and the same speed, so the page keeps one pace from one
+// turn into the next. That speed comes from how far the page on screen has
+// moved: a press early on means hurry (close to the quick pace), and the
+// later the press the closer to the ordinary pace, rising steeply at first
+// and levelling off, so late presses all feel much the same. Returns the
+// next turn's pace (0..1).
+export function chainNext() {
+  if (!motion || !ownFull) return 1;
+  const p = Math.max(0, Math.min(1, turnProgress()));
+  const pc = 1 - (1 - p) ** 2;                               // the response curve
+  const nextLength = ownQuick * (ownFull / ownQuick) ** pc;  // the next turn's length
+  // what's left of this one, at that same speed
+  const finishIn = Math.max(60, (1 - p) * nextLength);
+  if (remainingMs() > finishIn + 10) rush(finishIn);
+  return pc;
+}
 export async function animate(kind, sign, ms, go, dir = sign, at = null, { pace: p = 1, chained = false } = {}) {
   pace = Math.max(0, Math.min(1, p));
   // (a turn following straight on from another doesn't hold up for its picture)

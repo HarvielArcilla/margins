@@ -7,7 +7,7 @@ import { R, next as rNext, prev as rPrev, toggleChrome, showChrome, liveContents
 import * as stats from './stats.js';
 import * as focus from './focus.js';
 import * as tts from './tts.js';
-import { animate, coverTurn, hurryUp, inMotion, turnProgress, remainingMs, rush, nextWaiting, startDrag, ANIMATIONS } from './turn-anim.js';
+import { animate, coverTurn, hurryUp, inMotion, chainNext, nextWaiting, startDrag, ANIMATIONS } from './turn-anim.js';
 
 export { ANIMATIONS };
 
@@ -19,16 +19,15 @@ let dragging = false;
 // dir: +1 forward in reading order, -1 back.
 // Every click or press is one page. Only the motion adapts, smoothly, by how
 // far the page on screen has moved when the next turn is asked for:
-// - the page on screen hurries through the rest of its movement, and the
-//   next turn follows the moment it lands: quick if asked for early on,
-//   longer the later it was asked for, an ordinary turn by the end (or
-//   once nothing moves);
+// - the page on screen finishes, and the next turn goes, at one and the
+//   same speed, so the page keeps one pace: quick if asked for early on,
+//   nearer the ordinary pace the later (rising steeply, then levelling
+//   off); the next starts the moment the first lands; asked for once
+//   nothing moves, it's an ordinary turn;
 // - a third one while turns are still stacked up means flipping: the turn
 //   on screen ends at once and turns go instantly, until there's a short
 //   pause; then they animate again.
 // Holding a key down (the key repeating) is flipping from the first repeat.
-const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-const HURRY_MS = 110;      // the quickest the rest of a hurried turn goes
 const FLIP_PAUSE = 350;    // ms without a turn asked for that ends flipping
 let flipping = false;
 let flipTimer = 0;
@@ -54,13 +53,11 @@ export async function turn(dir, { source = 'user', at = null, repeat = false, pa
       if (queued.length < 12) queued.push({ dir, instant: true });
       return;
     }
-    const p = inMotion() ? turnProgress() : 1;
-    // the page on screen always hurries through what's left of its
-    // movement: the reader has already moved on
-    if (remainingMs() > HURRY_MS + 15) rush(HURRY_MS);
-    // the next turn: quick early on, an ordinary one by the end; it starts
-    // the moment this one lands
-    queued.push({ dir, instant: false, pace: smooth(0.3, 0.95, p) });
+    // the page on screen finishes, and the next turn goes, at one speed set
+    // by how far it has got (see chainNext); the next starts the moment this
+    // one lands; once nothing moves, it's an ordinary turn
+    const pace = inMotion() ? chainNext() : 1;
+    queued.push({ dir, instant: false, pace });
     nextWaiting(true);
     return;
   }
