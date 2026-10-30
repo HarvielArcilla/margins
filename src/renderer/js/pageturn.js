@@ -24,7 +24,7 @@ let dragging = false;
 //   nearer the ordinary pace the later (rising steeply, then levelling
 //   off); the next starts the moment the first lands; asked for once
 //   nothing moves, it's an ordinary turn;
-// - a third one while turns are still stacked up means flipping: the turn
+// - a fourth one while turns are still stacked up means flipping: the turn
 //   on screen ends at once and turns go instantly, until there's a short
 //   pause; then they animate again.
 // Holding a key down (the key repeating) is flipping from the first repeat.
@@ -44,7 +44,7 @@ export async function turn(dir, { source = 'user', at = null, repeat = false, pa
   const asked = source === 'user';
   if (asked && flipping) stillFlipping();
   if (busy) {
-    if (repeat || flipping || queued.length >= 1) {
+    if (repeat || flipping || queued.length >= 2) {
       // flipping: no more animations until a pause
       flipping = true;
       stillFlipping();
